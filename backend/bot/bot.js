@@ -1,62 +1,45 @@
 const { Telegraf } = require('telegraf');
-const User = require('../models/User');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+// Бот запускается только если есть токен
+if (!process.env.BOT_TOKEN) {
+  console.log('🤖 No BOT_TOKEN provided, running in API-only mode');
+  module.exports = null;
+} else {
+  const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Start command
-bot.start((ctx) => {
-  ctx.reply('🎰 Добро пожаловать в Счастливый Номер!', {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🎮 Начать играть', web_app: { url: process.env.WEB_APP_URL } }],
-        [{ text: '📊 Мой профиль', callback_data: 'profile' }],
-        [{ text: 'ℹ️ Правила', callback_data: 'rules' }]
-      ]
-    }
+  bot.start((ctx) => {
+    ctx.reply('🎰 Добро пожаловать в Счастливый Номер!', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🎮 Начать играть', web_app: { url: process.env.WEB_APP_URL || 'https://your-lottery-app.netlify.app' } }],
+          [{ text: '📊 Мой профиль', callback_data: 'profile' }],
+          [{ text: 'ℹ️ Правила', callback_data: 'rules' }]
+        ]
+      }
+    });
   });
-});
 
-// Profile callback
-bot.action('profile', async (ctx) => {
-  const user = await User.findOne({ telegramId: ctx.from.id.toString() });
-  
-  if (user) {
-    const winRate = user.gamesPlayed > 0 ? ((user.gamesWon / user.gamesPlayed) * 100).toFixed(1) : 0;
-    
+  bot.action('profile', async (ctx) => {
     ctx.reply(`👤 Ваш профиль:\n\n` +
-      `💰 Баланс: ${user.balance} ⭐\n` +
-      `🎮 Сыграно игр: ${user.gamesPlayed}\n` +
-      `🏆 Выиграно: ${user.gamesWon}\n` +
-      `📈 Процент побед: ${winRate}%\n` +
-      `💎 Общий выигрыш: ${user.totalWinnings} ⭐`);
-  } else {
-    ctx.reply('Пожалуйста, сначала запустите мини-приложение для регистрации.');
-  }
-});
+      `Для просмотра статистики откройте мини-приложение! 🎰\n\n` +
+      `Нажмите "🎮 Начать играть" чтобы увидеть ваш профиль и баланс.`);
+  });
 
-// Rules callback
-bot.action('rules', (ctx) => {
-  ctx.reply(`🎯 Правила игры:\n\n` +
-    `1. Каждый игрок получает номер от 1 до 10\n` +
-    `2. Когда набирается 10 игроков - игра начинается\n` +
-    `3. Рулетка определяет 3 выигрышных номера\n` +
-    `4. Призы: 50% банка + два по 25%\n` +
-    `5. Взнос за игру: 10 ⭐\n\n` +
-    `Удачи! 🍀`);
-});
+  bot.action('rules', (ctx) => {
+    ctx.reply(`🎯 Правила игры:\n\n` +
+      `1. Каждый игрок получает номер от 1 до 10\n` +
+      `2. Когда набирается 10 игроков - игра начинается\n` +
+      `3. Рулетка определяет 3 выигрышных номера\n` +
+      `4. Призы: 50% банка + два по 25%\n` +
+      `5. Взнос за игру: 10 ⭐\n\n` +
+      `Удачи! 🍀`);
+  });
 
-// Handle messages
-bot.on('message', (ctx) => {
-  if (ctx.message.web_app_data) {
-    // Handle data from web app
-    const data = JSON.parse(ctx.message.web_app_data.data);
-    console.log('Received from web app:', data);
-  }
-});
+  bot.launch().then(() => {
+    console.log('🤖 Telegram bot started successfully');
+  }).catch(error => {
+    console.error('❌ Telegram bot failed to start:', error.message);
+  });
 
-// Start bot
-bot.launch().then(() => {
-  console.log('Telegram bot started');
-});
-
-module.exports = bot;
+  module.exports = bot;
+}
