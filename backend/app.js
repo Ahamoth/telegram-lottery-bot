@@ -22,15 +22,58 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// PostgreSQL connection
-const pool = new Pool({
+// Проверка DATABASE_URL
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL is not set!');
+  console.log('Available environment variables:', Object.keys(process.env));
+}
+
+// PostgreSQL connection с улучшенной обработкой ошибок
+const poolConfig = {
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  // Настройки для Render PostgreSQL
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 20
+};
+
+console.log('🔧 Database config:', {
+  hasDatabaseUrl: !!process.env.DATABASE_URL,
+  nodeEnv: process.env.NODE_ENV,
+  ssl: poolConfig.ssl
 });
+
+const pool = new Pool(poolConfig);
+
+// Тестирование подключения к БД
+const testDatabaseConnection = async () => {
+  try {
+    const client = await pool.connect();
+    console.log('✅ PostgreSQL connected successfully');
+    
+    // Проверяем существование таблиц
+    const tables = await client.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `);
+    
+    console.log('📊 Existing tables:', tables.rows.map(row => row.table_name));
+    client.release();
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error.message);
+    console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'Set' : 'Not set');
+    return false;
+  }
+};
 
 // Инициализация базы данных
 const initDB = async () => {
   try {
+    console.log('🔄 Initializing database...');
+    
     // Создаем таблицу пользователей
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -112,75 +155,7 @@ const initDB = async () => {
   }
 };
 
-// Health check
-app.get('/health', async (req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.status(200).json({ 
-      status: 'OK', 
-      message: 'Server is running',
-      database: 'PostgreSQL connected',
-      mode: 'PRODUCTION',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      status: 'ERROR', 
-      message: 'Server is running',
-      database: 'PostgreSQL disconnected',
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// API Routes - ИСПРАВЛЕННЫЕ ПУТИ
-app.use('/api/auth', require('./routes/auth')(pool));
-app.use('/api/game', require('./routes/game')(pool));
-app.use('/api/user', require('./routes/user')(pool));
-app.use('/api/payment', require('./routes/payment')(pool));
-
-// Serve frontend
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'Telegram Lottery API', 
-    version: '1.0.0',
-    status: 'running'
-  });
-});
-
-// Start bot
-if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
-  try {
-    const bot = require('./bot/bot');
-    console.log('🤖 Telegram bot started');
-  } catch (error) {
-    console.log('❌ Bot failed to start:', error.message);
-  }
-} else {
-  console.log('❌ Bot token not provided');
-}
-
-// Error handling
-app.use((err, req, res, next) => {
-  console.error('Error:', err.stack);
-  res.status(500).json({ 
-    error: 'Something went wrong!',
-    message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
-  });
-});
-
-const PORT = process.env.PORT || 10000;
-
-// Инициализация и запуск
-initDB().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'production'}`);
-    console.log(`🗄️ Database: PostgreSQL`);
-    console.log(`💰 Mode: REAL MONEY (Telegram Stars)`);
-    console.log(`🔗 Health: https://telegram-lottery-bot-e75s.onrender.com/health`);
-  });
-  / Функция для миграции базы данных
+// Функция для миграции базы данных
 const migrateDatabase = async () => {
   try {
     console.log('🔄 Checking database migrations...');
@@ -228,5 +203,94 @@ const migrateDatabase = async () => {
     console.error('❌ Database migration error:', error);
   }
 };
+
+// Health check с проверкой БД
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.status(200).json({ 
+      status: 'OK', 
+      message: 'Server is running',
+      database: 'PostgreSQL connected',
+      mode: 'PRODUCTION',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'ERROR', 
+      message: 'Server is running',
+      database: 'PostgreSQL disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
+// API Routes
+app.use('/api/auth', require('./routes/auth')(pool));
+app.use('/api/game', require('./routes/game')(pool));
+app.use('/api/user', require('./routes/user')(pool));
+app.use('/api/payment', require('./routes/payment')(pool));
+
+// Serve frontend
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Telegram Lottery API', 
+    version: '1.0.0',
+    status: 'running',
+    database: process.env.DATABASE_URL ? 'Configured' : 'Not configured'
+  });
+});
+
+// Start bot
+if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
+  try {
+    const bot = require('./bot/bot');
+    console.log('🤖 Telegram bot started');
+  } catch (error) {
+    console.log('❌ Bot failed to start:', error.message);
+  }
+} else {
+  console.log('❌ Bot token not provided');
+}
+
+// Error handling
+app.use((err, req, res, next) => {
+  console.error('Error:', err.stack);
+  res.status(500).json({ 
+    error: 'Something went wrong!',
+    message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+  });
+});
+
+const PORT = process.env.PORT || 10000;
+
+// Инициализация и запуск
+const startServer = async () => {
+  // Сначала тестируем подключение к БД
+  const dbConnected = await testDatabaseConnection();
+  
+  if (!dbConnected) {
+    console.log('🔄 Retrying database connection in 5 seconds...');
+    setTimeout(startServer, 5000);
+    return;
+  }
+  
+  // Затем инициализируем БД
+  await initDB();
+  
+  // Выполняем миграции
+  await migrateDatabase();
+  
+  // Запускаем сервер
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'production'}`);
+    console.log(`🗄️ Database: ${dbConnected ? 'PostgreSQL connected' : 'PostgreSQL disconnected'}`);
+    console.log(`💰 Mode: REAL MONEY (Telegram Stars)`);
+    console.log(`🔗 Health: https://telegram-lottery-bot-e75s.onrender.com/health`);
+  });
+};
+
+startServer();
