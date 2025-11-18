@@ -180,4 +180,53 @@ initDB().then(() => {
     console.log(`💰 Mode: REAL MONEY (Telegram Stars)`);
     console.log(`🔗 Health: https://telegram-lottery-bot-e75s.onrender.com/health`);
   });
+  / Функция для миграции базы данных
+const migrateDatabase = async () => {
+  try {
+    console.log('🔄 Checking database migrations...');
+    
+    // Проверяем существование колонки avatar в таблице users
+    const checkAvatarColumn = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'avatar'
+    `);
+    
+    if (checkAvatarColumn.rows.length === 0) {
+      console.log('📝 Adding avatar column to users table...');
+      await pool.query(`
+        ALTER TABLE users ADD COLUMN avatar VARCHAR(50) DEFAULT '👤'
+      `);
+      console.log('✅ Avatar column added successfully');
+    } else {
+      console.log('✅ Avatar column already exists');
+    }
+    
+    // Проверяем другие возможные отсутствующие колонки
+    const columnsToCheck = [
+      { table: 'users', column: 'games_played', type: 'INTEGER DEFAULT 0' },
+      { table: 'users', column: 'games_won', type: 'INTEGER DEFAULT 0' },
+      { table: 'users', column: 'total_winnings', type: 'INTEGER DEFAULT 0' }
+    ];
+    
+    for (const { table, column, type } of columnsToCheck) {
+      const checkColumn = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = $1 AND column_name = $2
+      `, [table, column]);
+      
+      if (checkColumn.rows.length === 0) {
+        console.log(`📝 Adding ${column} column to ${table} table...`);
+        await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+        console.log(`✅ ${column} column added to ${table}`);
+      }
+    }
+    
+    console.log('✅ Database migrations completed');
+  } catch (error) {
+    console.error('❌ Database migration error:', error);
+  }
+};
 });
+
