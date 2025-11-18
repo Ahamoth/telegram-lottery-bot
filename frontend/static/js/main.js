@@ -907,7 +907,7 @@ const Profile = () => {
           title: 'Пополнение баланса',
           description: `Пополнение на ${amount} звезд`,
           payload: invoiceResult.payment.payload,
-          provider_token: 'YOUR_PROVIDER_TOKEN', // Нужно получить у провайдера
+          provider_token: '284685063:TEST:YzcyZDIwM2U0ZGYz', // Нужно получить у провайдера
           currency: 'XTR',
           prices: JSON.stringify([{
             label: `Пополнение баланса`,
@@ -1140,5 +1140,6 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
