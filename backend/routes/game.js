@@ -3,7 +3,7 @@ const express = require('express');
 module.exports = (pool) => {
   const router = express.Router();
 
-  // Get current game
+  // Get current game - только реальные игроки
   router.get('/current', async (req, res) => {
     try {
       const gameResult = await pool.query(
@@ -18,7 +18,7 @@ module.exports = (pool) => {
                'avatar', COALESCE(gp.avatar, '👤'),
                'isBot', gp.is_bot
              ) ORDER BY gp.player_number
-           ) FILTER (WHERE gp.id IS NOT NULL), '[]'
+           ) FILTER (WHERE gp.id IS NOT NULL AND NOT gp.is_bot), '[]'
          ) as players
          FROM games g
          LEFT JOIN game_players gp ON g.id = gp.game_id
@@ -161,7 +161,7 @@ module.exports = (pool) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ 
           success: false,
-          error: 'Insufficient balance' 
+          error: 'Insufficient balance. Need 10 stars to join the game.' 
         });
       }
       
@@ -244,17 +244,16 @@ module.exports = (pool) => {
     }
   });
 
-  // Start game
+  // Start game - минимально 2 реальных игрока
   router.post('/start', async (req, res) => {
     const client = await pool.connect();
     
     try {
       await client.query('BEGIN');
 
-      // Находим текущую игру в статусе waiting
       const gameResult = await client.query(
         `SELECT g.*, 
-         COUNT(gp.id) as players_count
+         COUNT(CASE WHEN NOT gp.is_bot THEN 1 END) as real_players_count
          FROM games g
          LEFT JOIN game_players gp ON g.id = gp.game_id
          WHERE g.status = 'waiting'
@@ -272,18 +271,18 @@ module.exports = (pool) => {
       }
 
       const game = gameResult.rows[0];
-      const playersCount = parseInt(game.players_count);
+      const realPlayersCount = parseInt(game.real_players_count);
 
-      console.log(`🎮 Starting game ${game.id} with ${playersCount} players`);
+      console.log(`🎮 Starting game ${game.id} with ${realPlayersCount} real players`);
 
-      // Проверяем количество игроков
-      if (playersCount < 2) {
+      // Только реальные игроки, минимум 2
+      if (realPlayersCount < 2) {
         await client.query('ROLLBACK');
         return res.status(400).json({ 
           success: false,
-          error: 'Not enough players to start the game',
-          details: `Need at least 2 players, currently have ${playersCount}`,
-          playersCount: playersCount
+          error: 'Not enough real players to start the game',
+          details: `Need at least 2 real players, currently have ${realPlayersCount}`,
+          playersCount: realPlayersCount
         });
       }
 
@@ -293,40 +292,17 @@ module.exports = (pool) => {
         ['active', new Date(), game.id]
       );
 
-      // Получаем обновленную информацию об игре
-      const updatedGameResult = await client.query(
-        `SELECT g.*, 
-         json_agg(
-           json_build_object(
-             'telegramId', gp.telegram_id,
-             'number', gp.player_number,
-             'name', gp.player_name,
-             'avatar', COALESCE(gp.avatar, '👤'),
-             'isBot', gp.is_bot
-           )
-         ) as players
-         FROM games g
-         LEFT JOIN game_players gp ON g.id = gp.game_id
-         WHERE g.id = $1
-         GROUP BY g.id`,
-        [game.id]
-      );
-
       await client.query('COMMIT');
-
-      const updatedGame = updatedGameResult.rows[0];
 
       res.json({
         success: true,
         game: {
-          id: updatedGame.id,
-          status: updatedGame.status,
-          bankAmount: updatedGame.bank_amount,
-          players: updatedGame.players || [],
-          playersCount: playersCount,
-          startTime: updatedGame.start_time
+          id: game.id,
+          status: 'active',
+          bankAmount: game.bank_amount,
+          playersCount: realPlayersCount
         },
-        message: `Game started successfully with ${playersCount} players`
+        message: `Game started successfully with ${realPlayersCount} real players`
       });
 
     } catch (error) {
@@ -334,8 +310,7 @@ module.exports = (pool) => {
       console.error('❌ Start game error:', error);
       res.status(500).json({ 
         success: false,
-        error: 'Failed to start game',
-        details: error.message 
+        error: 'Failed to start game'
       });
     } finally {
       client.release();
@@ -701,197 +676,6 @@ module.exports = (pool) => {
         success: false,
         error: 'Failed to get game status' 
       });
-    }
-  });
-
-  // Auto-fill game with bots if needed
-  router.post('/auto-fill', async (req, res) => {
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
-
-      const { gameId, targetPlayers = 10 } = req.body;
-
-      // Получаем текущую игру
-      const gameResult = await client.query(
-        'SELECT * FROM games WHERE id = $1 FOR UPDATE',
-        [gameId]
-      );
-
-      if (gameResult.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ 
-          success: false,
-          error: 'Game not found' 
-        });
-      }
-
-      const game = gameResult.rows[0];
-
-      // Получаем текущих игроков
-      const playersResult = await client.query(
-        'SELECT player_number FROM game_players WHERE game_id = $1',
-        [gameId]
-      );
-
-      const usedNumbers = playersResult.rows.map(row => row.player_number);
-      const availableNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(n => !usedNumbers.includes(n));
-      
-      const currentPlayers = playersResult.rows.length;
-      const botsToAdd = Math.min(targetPlayers - currentPlayers, availableNumbers.length);
-
-      console.log(`🤖 Adding ${botsToAdd} bots to game ${gameId}`);
-
-      const botAvatars = ['🤖', '👾', '🤡', '💀', '👻', '🐵', '🐸', '🦁', '🐲', '🦄'];
-      const botNames = ['Бот_Алекс', 'Бот_Макс', 'Бот_Даня', 'Бот_Саша', 'Бот_Костя', 'Бот_Ник', 'Бот_Майк', 'Бот_Джон'];
-
-      let addedBots = 0;
-
-      for (let i = 0; i < botsToAdd && availableNumbers.length > 0; i++) {
-        const botNumber = availableNumbers.shift();
-        const botAvatar = botAvatars[i % botAvatars.length];
-        const botName = botNames[i % botNames.length];
-
-        await client.query(
-          `INSERT INTO game_players 
-           (game_id, telegram_id, player_number, player_name, avatar, is_bot) 
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [gameId, `bot-auto-${Date.now()}-${i}`, botNumber, botName, botAvatar, true]
-        );
-
-        addedBots++;
-      }
-
-      // Обновляем банк
-      const newPlayersCount = currentPlayers + addedBots;
-      const newBankAmount = newPlayersCount * 10;
-
-      await client.query(
-        'UPDATE games SET bank_amount = $1 WHERE id = $2',
-        [newBankAmount, gameId]
-      );
-
-      await client.query('COMMIT');
-
-      res.json({
-        success: true,
-        addedBots: addedBots,
-        newPlayersCount: newPlayersCount,
-        newBankAmount: newBankAmount,
-        message: `Added ${addedBots} bots to the game`
-      });
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Auto-fill error:', error);
-      res.status(500).json({ 
-        success: false,
-        error: 'Failed to auto-fill game with bots' 
-      });
-    } finally {
-      client.release();
-    }
-  });
-
-  // Add single bot to game
-  router.post('/add-bot', async (req, res) => {
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
-
-      const { gameId } = req.body;
-
-      const gameResult = await client.query(
-        'SELECT * FROM games WHERE id = $1 FOR UPDATE',
-        [gameId]
-      );
-
-      if (gameResult.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ 
-          success: false,
-          error: 'Game not found' 
-        });
-      }
-
-      const game = gameResult.rows[0];
-
-      if (game.status !== 'waiting') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          success: false,
-          error: 'Can only add bots to waiting games' 
-        });
-      }
-
-      // Получаем занятые номера
-      const usedNumbersResult = await client.query(
-        'SELECT player_number FROM game_players WHERE game_id = $1',
-        [gameId]
-      );
-
-      const usedNumbers = usedNumbersResult.rows.map(row => row.player_number);
-      const availableNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(n => !usedNumbers.includes(n));
-
-      if (availableNumbers.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          success: false,
-          error: 'Game is full' 
-        });
-      }
-
-      const botNumber = availableNumbers[0];
-      const botAvatars = ['🤖', '👾', '🤡', '💀', '👻', '🐵', '🐸', '🦁', '🐲', '🦄'];
-      const botNames = ['Бот_Алекс', 'Бот_Макс', 'Бот_Даня', 'Бот_Саша', 'Бот_Костя', 'Бот_Ник', 'Бот_Майк', 'Бот_Джон'];
-
-      const randomIndex = Math.floor(Math.random() * botAvatars.length);
-      const botAvatar = botAvatars[randomIndex];
-      const botName = botNames[randomIndex % botNames.length];
-
-      await client.query(
-        `INSERT INTO game_players 
-         (game_id, telegram_id, player_number, player_name, avatar, is_bot) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [gameId, `bot-${Date.now()}`, botNumber, botName, botAvatar, true]
-      );
-
-      // Обновляем банк
-      const playersCountResult = await client.query(
-        'SELECT COUNT(*) as count FROM game_players WHERE game_id = $1',
-        [gameId]
-      );
-
-      const bankAmount = parseInt(playersCountResult.rows[0].count) * 10;
-      await client.query(
-        'UPDATE games SET bank_amount = $1 WHERE id = $2',
-        [bankAmount, gameId]
-      );
-
-      await client.query('COMMIT');
-
-      res.json({
-        success: true,
-        bot: {
-          name: botName,
-          number: botNumber,
-          avatar: botAvatar
-        },
-        bankAmount: bankAmount,
-        playersCount: parseInt(playersCountResult.rows[0].count)
-      });
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Add bot error:', error);
-      res.status(500).json({ 
-        success: false,
-        error: 'Failed to add bot' 
-      });
-    } finally {
-      client.release();
     }
   });
 
