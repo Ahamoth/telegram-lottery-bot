@@ -1,0 +1,25 @@
+[build]
+  publish = "frontend"
+  command = "echo 'Frontend deployed'"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# Важно: redirects для SPA
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Serve static files correctly
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
