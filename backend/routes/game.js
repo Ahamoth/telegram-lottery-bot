@@ -15,7 +15,7 @@ module.exports = (pool) => {
                'telegramId', gp.telegram_id,
                'number', gp.player_number,
                'name', gp.player_name,
-               'avatar', gp.avatar,
+               'avatar', COALESCE(gp.avatar, '👤'),
                'isBot', gp.is_bot
              ) ORDER BY gp.player_number
            ) FILTER (WHERE gp.id IS NOT NULL), '[]'
@@ -130,7 +130,7 @@ module.exports = (pool) => {
       
       // Проверяем баланс пользователя
       const userResult = await client.query(
-        'SELECT balance FROM users WHERE telegram_id = $1',
+        'SELECT balance, avatar FROM users WHERE telegram_id = $1',
         [telegramId]
       );
       
@@ -140,17 +140,22 @@ module.exports = (pool) => {
       }
       
       const userBalance = userResult.rows[0].balance;
+      const userAvatar = userResult.rows[0].avatar;
+      
       if (userBalance < 10) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Insufficient balance' });
       }
+      
+      // Используем аватар пользователя из базы или переданный аватар
+      const finalAvatar = avatar || userAvatar || '👤';
       
       // Добавляем игрока
       await client.query(
         `INSERT INTO game_players 
          (game_id, telegram_id, player_number, player_name, avatar, is_bot) 
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [game.id, telegramId, userNumber, name || 'Player', avatar || '👤', false]
+        [game.id, telegramId, userNumber, name || 'Player', finalAvatar, false]
       );
       
       // Обновляем банк
@@ -179,7 +184,7 @@ module.exports = (pool) => {
       
       const newBalance = updatedUserResult.rows[0].balance;
       
-      // Получаем обновленный список игроков
+      // Получаем обновленный список игроков с аватарами
       const playersResult = await client.query(
         `SELECT 
           id,
@@ -205,7 +210,8 @@ module.exports = (pool) => {
           players: playersResult.rows
         },
         userNumber: userNumber,
-        newBalance: newBalance
+        newBalance: newBalance,
+        userAvatar: finalAvatar
       });
       
     } catch (error) {
@@ -296,7 +302,7 @@ module.exports = (pool) => {
         return res.status(400).json({ error: 'Game is not active' });
       }
       
-      // Получаем всех игроков
+      // Получаем всех игроков с аватарами
       const playersResult = await client.query(
         `SELECT 
           telegram_id,
@@ -347,7 +353,7 @@ module.exports = (pool) => {
         winners.push({
           telegramId: winner.telegram_id,
           name: winner.player_name,
-          avatar: winner.avatar,
+          avatar: winner.avatar || '👤',
           number: winner.player_number,
           prize: prizeCenter,
           prizeType: 'Главный приз',
@@ -372,7 +378,7 @@ module.exports = (pool) => {
         winners.push({
           telegramId: winner.telegram_id,
           name: winner.player_name,
-          avatar: winner.avatar,
+          avatar: winner.avatar || '👤',
           number: winner.player_number,
           prize: prizeSide,
           prizeType: 'Левый приз',
@@ -397,7 +403,7 @@ module.exports = (pool) => {
         winners.push({
           telegramId: winner.telegram_id,
           name: winner.player_name,
-          avatar: winner.avatar,
+          avatar: winner.avatar || '👤',
           number: winner.player_number,
           prize: prizeSide,
           prizeType: 'Правый приз',
@@ -430,13 +436,13 @@ module.exports = (pool) => {
         ['finished', winningNumbers.center, winningNumbers.left, winningNumbers.right, new Date(), gameId]
       );
       
-      // Сохраняем победителей в таблицу winners
+      // Сохраняем победителей в таблицу winners с аватарами
       for (const winner of winners) {
         await client.query(
           `INSERT INTO winners 
-           (game_id, telegram_id, prize, prize_type, player_number) 
-           VALUES ($1, $2, $3, $4, $5)`,
-          [gameId, winner.telegramId, winner.prize, winner.prizeType, winner.number]
+           (game_id, telegram_id, prize, prize_type, player_number, avatar) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [gameId, winner.telegramId, winner.prize, winner.prizeType, winner.number, winner.avatar]
         );
       }
       
@@ -551,137 +557,6 @@ module.exports = (pool) => {
       res.status(500).json({ error: 'Failed to leave game' });
     } finally {
       client.release();
-    }
-  });
-
-  // Get game history
-  router.get('/history/:telegramId', async (req, res) => {
-    try {
-      const { telegramId } = req.params;
-      
-      const historyResult = await pool.query(
-        `SELECT 
-          g.id,
-          g.status,
-          g.bank_amount as "bankAmount",
-          g.winning_center as "winningCenter",
-          g.winning_left as "winningLeft", 
-          g.winning_right as "winningRight",
-          g.created_at as "createdAt",
-          w.prize,
-          w.prize_type as "prizeType",
-          w.player_number as "playerNumber"
-         FROM games g
-         LEFT JOIN winners w ON g.id = w.game_id AND w.telegram_id = $1
-         WHERE g.status = 'finished'
-         AND (EXISTS (
-           SELECT 1 FROM game_players gp 
-           WHERE gp.game_id = g.id AND gp.telegram_id = $1
-         ) OR w.telegram_id = $1)
-         ORDER BY g.created_at DESC
-         LIMIT 20`,
-        [telegramId]
-      );
-      
-      const games = historyResult.rows.map(row => ({
-        id: row.id,
-        status: row.status,
-        bankAmount: row.bankAmount,
-        winningNumbers: row.winningCenter ? {
-          center: row.winningCenter,
-          left: row.winningLeft,
-          right: row.winningRight
-        } : null,
-        playerNumber: row.playerNumber,
-        prize: row.prize,
-        prizeType: row.prizeType,
-        createdAt: row.createdAt
-      }));
-      
-      res.json({
-        success: true,
-        games: games
-      });
-      
-    } catch (error) {
-      console.error('Game history error:', error);
-      res.status(500).json({ error: 'Failed to get game history' });
-    }
-  });
-
-  // Add bot to game (для тестирования)
-  router.post('/add-bot', async (req, res) => {
-    try {
-      const { gameId } = req.body;
-      
-      const gameResult = await pool.query(
-        'SELECT * FROM games WHERE id = $1',
-        [gameId]
-      );
-      
-      if (gameResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Game not found' });
-      }
-      
-      const game = gameResult.rows[0];
-      
-      if (game.status !== 'waiting') {
-        return res.status(400).json({ error: 'Game is not waiting for players' });
-      }
-      
-      // Получаем занятые номера
-      const usedNumbersResult = await pool.query(
-        'SELECT player_number FROM game_players WHERE game_id = $1',
-        [gameId]
-      );
-      
-      const usedNumbers = usedNumbersResult.rows.map(row => row.player_number);
-      const availableNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(n => !usedNumbers.includes(n));
-      
-      if (availableNumbers.length === 0) {
-        return res.status(400).json({ error: 'Game is full' });
-      }
-      
-      const botNumber = availableNumbers[0];
-      const botAvatars = ['🤖', '👾', '🤡', '💀', '👻', '🐵', '🐸', '🦁', '🐲', '🦄'];
-      const botNames = ['Бот_Алекс', 'Бот_Макс', 'Бот_Даня', 'Бот_Саша', 'Бот_Костя', 'Бот_Ник', 'Бот_Майк', 'Бот_Джон'];
-      
-      const randomIndex = Math.floor(Math.random() * botAvatars.length);
-      const botAvatar = botAvatars[randomIndex];
-      const botName = botNames[randomIndex % botNames.length];
-      
-      await pool.query(
-        `INSERT INTO game_players 
-         (game_id, telegram_id, player_number, player_name, avatar, is_bot) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [gameId, `bot-${Date.now()}`, botNumber, botName, botAvatar, true]
-      );
-      
-      // Обновляем банк
-      const playersCountResult = await pool.query(
-        'SELECT COUNT(*) as count FROM game_players WHERE game_id = $1',
-        [gameId]
-      );
-      
-      const bankAmount = parseInt(playersCountResult.rows[0].count) * 10;
-      await pool.query(
-        'UPDATE games SET bank_amount = $1 WHERE id = $2',
-        [bankAmount, gameId]
-      );
-      
-      res.json({
-        success: true,
-        bot: {
-          name: botName,
-          number: botNumber,
-          avatar: botAvatar
-        },
-        bankAmount: bankAmount
-      });
-      
-    } catch (error) {
-      console.error('Add bot error:', error);
-      res.status(500).json({ error: 'Failed to add bot' });
     }
   });
 
