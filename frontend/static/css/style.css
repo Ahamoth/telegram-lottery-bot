@@ -899,4 +899,100 @@ body {
     .winner-info {
         align-items: center;
     }
+
+}
+/* Header User Styles */
+.header-user {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.user-avatar {
+    font-size: 2rem;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem;
+    border-radius: 50%;
+    border: 2px solid #ffd700;
+    animation: avatarGlow 2s infinite alternate;
+}
+
+@keyframes avatarGlow {
+    from {
+        box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+    }
+    to {
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+    }
+}
+
+/* Player Avatar Styles */
+.player-avatar {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.player-card.current-user .player-avatar {
+    animation: userAvatarPulse 2s infinite;
+    transform: scale(1.1);
+}
+
+@keyframes userAvatarPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.player-card.bot-player .player-avatar {
+    opacity: 0.8;
+    font-size: 1.8rem;
+}
+
+.player-badge {
+    background: #ffd700;
+    color: #333;
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-top: 5px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+/* Winner Avatar Styles */
+.winner-avatar {
+    font-size: 2rem;
+    margin-right: 1rem;
+}
+
+.winner-badge.current-user .winner-avatar {
+    animation: winnerAvatarGlow 1.5s infinite alternate;
+}
+
+@keyframes winnerAvatarGlow {
+    from {
+        transform: scale(1);
+        text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    }
+    to {
+        transform: scale(1.2);
+        text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+    }
+}
+
+/* Responsive avatars */
+@media (max-width: 768px) {
+    .user-avatar {
+        font-size: 1.5rem;
+        padding: 0.4rem;
+    }
+    
+    .player-avatar {
+        font-size: 1.8rem;
+    }
+    
+    .winner-avatar {
+        font-size: 1.8rem;
+    }
 }
