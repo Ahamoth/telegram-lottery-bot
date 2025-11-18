@@ -864,57 +864,105 @@ const Profile = () => {
         }
     };
 
-    const handleTelegramPayment = async (amount) => {
-        if (!user || !window.Telegram?.WebApp) {
-            alert('Пополнение доступно только в Telegram');
-            return;
+   const handleTelegramPayment = async (amount) => {
+  if (!user || !window.Telegram?.WebApp) {
+    alert('Пополнение доступно только в Telegram');
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    // Создаем инвойс
+    const invoiceResult = await API.createInvoice(user.telegramId, amount);
+    
+    if (invoiceResult.success) {
+      // Демо-режим: сразу подтверждаем платеж
+      if (invoiceResult.demoMode) {
+        const paymentResult = await API.confirmPayment({
+          telegramId: user.telegramId,
+          amount: amount
+        });
+
+        if (paymentResult.success) {
+          alert(`✅ Баланс пополнен на ${amount} ⭐`);
+          loadUserData(); // Перезагружаем данные пользователя
+          
+          // Обновляем баланс в хедере
+          window.dispatchEvent(new CustomEvent('balanceUpdated', {
+            detail: { balance: paymentResult.newBalance }
+          }));
+        } else {
+          alert('❌ Ошибка при пополнении баланса');
         }
+      } else {
+        // Реальный платеж через Telegram Payments
+        const paymentData = {
+          title: 'Пополнение баланса',
+          description: `Пополнение на ${amount} звезд`,
+          payload: invoiceResult.payment.payload,
+          provider_token: 'YOUR_PROVIDER_TOKEN', // Нужно получить у провайдера
+          currency: 'XTR',
+          prices: JSON.stringify([{
+            label: `Пополнение баланса`,
+            amount: amount * 100 // В копейках
+          }]),
+          need_name: false,
+          need_phone_number: false,
+          need_email: false,
+          need_shipping_address: false
+        };
 
-        setLoading(true);
+        // Открываем платежную форму Telegram
+        window.Telegram.WebApp.openInvoice(paymentData, (status) => {
+          if (status === 'paid') {
+            // Платеж успешен
+            API.confirmPayment({
+              telegram_payment_charge_id: 'from_telegram',
+              provider_payment_charge_id: 'from_provider', 
+              payload: invoiceResult.payment.payload
+            }).then(result => {
+              if (result.success) {
+                alert(`✅ Баланс пополнен на ${amount} ⭐`);
+                loadUserData();
+                window.dispatchEvent(new CustomEvent('balanceUpdated', {
+                  detail: { balance: result.newBalance }
+                }));
+              }
+            });
+          } else {
+            alert('❌ Платеж не был завершен');
+          }
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Payment error:', error);
+    
+    // Демо-режим: пробуем демо-платеж если основной не сработал
+    try {
+      const demoResult = await API.request('/payment/demo-payment', {
+        method: 'POST',
+        body: JSON.stringify({
+          telegramId: user.telegramId,
+          amount: amount
+        })
+      });
 
-        try {
-            // Создаем инвойс
-            const invoiceResult = await API.createInvoice(user.telegramId, amount);
-            
-            if (invoiceResult.success) {
-                // В реальном приложении здесь будет вызов Telegram Payments
-                // Для демо просто эмулируем успешный платеж
-                setTimeout(async () => {
-                    try {
-                        // Эмуляция успешного платежа
-                        const paymentResult = await API.confirmPayment({
-                            telegram_payment_charge_id: 'demo_' + Date.now(),
-                            provider_payment_charge_id: 'demo_provider_' + Date.now(),
-                            payload: JSON.stringify({
-                                paymentId: invoiceResult.payment.id,
-                                telegramId: user.telegramId,
-                                amount: amount
-                            })
-                        });
-
-                        if (paymentResult.success) {
-                            alert(`✅ Баланс пополнен на ${amount} ⭐`);
-                            loadUserData(); // Перезагружаем данные пользователя
-                            
-                            // Обновляем баланс в хедере
-                            window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                                detail: { balance: paymentResult.newBalance }
-                            }));
-                        }
-                    } catch (error) {
-                        console.error('Payment confirmation error:', error);
-                        alert('❌ Ошибка при подтверждении платежа');
-                    } finally {
-                        setLoading(false);
-                    }
-                }, 2000);
-            }
-        } catch (error) {
-            console.error('Payment error:', error);
-            alert('❌ Ошибка при создании платежа');
-            setLoading(false);
-        }
-    };
+      if (demoResult.success) {
+        alert(`✅ Демо-режим: баланс пополнен на ${amount} ⭐`);
+        loadUserData();
+        window.dispatchEvent(new CustomEvent('balanceUpdated', {
+          detail: { balance: demoResult.newBalance }
+        }));
+      }
+    } catch (demoError) {
+      alert('❌ Ошибка при пополнении баланса');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
     return React.createElement('div', { className: 'profile' },
         React.createElement('div', { className: 'profile-header' },
@@ -1086,3 +1134,4 @@ root.render(
         React.createElement(App)
     )
 );
+
