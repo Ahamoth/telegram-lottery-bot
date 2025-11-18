@@ -740,3 +740,412 @@ const Game = () => {
                     ...Array.from({ length: 10 - players.length }, (_, index) => 
                         React.createElement('div', { 
                             key: `empty-${index}`,
+                          className: 'player-card empty-slot'
+                        },
+                            React.createElement('div', { className: 'player-avatar' }, '○'),
+                            React.createElement('div', { className: 'player-name' }, 'Свободно'),
+                            React.createElement('div', { className: 'player-number' }, '?')
+                        )
+                    )
+                )
+            ),
+
+        gameState === 'active' &&
+            React.createElement('div', null,
+                React.createElement('div', { className: 'room-info' },
+                    React.createElement('h2', null, '🎯 Игра началась!'),
+                    React.createElement('p', null, `Банк: ${bankAmount} ⭐`),
+                    React.createElement('p', null, `Игроков: ${realPlayersCount}`),
+                    React.createElement('p', { style: { color: '#ffd700' } }, 'Рулетка запускается автоматически...')
+                ),
+                React.createElement(Roulette, { onSpinComplete: handleSpinComplete })
+            ),
+
+        gameState === 'finished' &&
+            React.createElement('div', { className: 'results-section' },
+                React.createElement('div', { className: 'winners-display' },
+                    React.createElement('h2', { style: { color: '#ffd700', marginBottom: '1rem' } }, '🎉 Результаты раунда! 🎉'),
+                    
+                    React.createElement('div', { className: 'bank-info' },
+                        React.createElement('p', null, `Общий банк: ${bankAmount} ⭐`),
+                        React.createElement('p', null, `Распределение: 50% / 25% / 25%`)
+                    ),
+                    
+                    winningNumbers &&
+                        React.createElement('div', { className: 'winning-numbers-info' },
+                            React.createElement('div', { 
+                                style: { 
+                                    background: 'linear-gradient(135deg, #ffd700, #ff6b00)',
+                                    color: '#333',
+                                    padding: '1rem 2rem',
+                                    borderRadius: '15px',
+                                    margin: '1rem auto',
+                                    maxWidth: '500px'
+                                } 
+                            },
+                                React.createElement('h3', { style: { marginBottom: '0.5rem' } }, 'Выигрышные номера:'),
+                                React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: '2rem', fontSize: '1.2rem' } },
+                                    React.createElement('div', null, 
+                                        React.createElement('strong', null, winningNumbers.left),
+                                        React.createElement('br'),
+                                        '(25%)'
+                                    ),
+                                    React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 'bold' } }, 
+                                        React.createElement('strong', null, winningNumbers.center),
+                                        React.createElement('br'),
+                                        '(50%)'
+                                    ),
+                                    React.createElement('div', null, 
+                                        React.createElement('strong', null, winningNumbers.right),
+                                        React.createElement('br'),
+                                        '(25%)'
+                                    )
+                                )
+                            )
+                        ),
+                    
+                    winners.length > 0 ? 
+                        React.createElement('div', null,
+                            React.createElement('h3', { style: { margin: '1.5rem 0 1rem 0', color: '#4caf50' } }, 'Победители:'),
+                            winners.map((winner, index) => 
+                                React.createElement('div', { 
+                                    key: `${winner.id || winner.telegramId}-${winner.type}`,
+                                    className: `winner-badge ${winner.telegramId === currentUser?.telegramId ? 'current-user' : ''} winner-${winner.type}`
+                                },
+                                    React.createElement('div', { className: 'winner-avatar' }, winner.avatar),
+                                    React.createElement('div', { className: 'winner-info' },
+                                        React.createElement('div', { className: 'winner-name' }, winner.name),
+                                        React.createElement('div', { className: 'winner-prize' }, 
+                                            `${winner.prizeType}: ${winner.prize} ⭐`
+                                        )
+                                    )
+                                )
+                            )
+                        ) :
+                        React.createElement('div', { className: 'no-winners' },
+                            React.createElement('p', null, 'В этом раунде победителей нет'),
+                            React.createElement('p', { style: { marginTop: '0.5rem', opacity: 0.8 } }, 
+                                'Никто не угадал выигрышные номера'
+                            )
+                        )
+                ),
+                
+                React.createElement('div', { className: 'game-controls' },
+                    React.createElement('button', { 
+                        className: 'control-button primary',
+                        onClick: startNewRound
+                    }, 'Новая игра')
+                )
+            )
+    );
+};
+
+// Profile Component
+const Profile = () => {
+    const [user, setUser] = useState(null);
+    const [stats, setStats] = useState({
+        gamesPlayed: 0,
+        gamesWon: 0,
+        totalWinnings: 0
+    });
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        loadUserData();
+    }, []);
+
+    const loadUserData = async () => {
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+            const userData = JSON.parse(savedUser);
+            setUser(userData);
+            setStats({
+                gamesPlayed: userData.gamesPlayed || 0,
+                gamesWon: userData.gamesWon || 0,
+                totalWinnings: userData.totalWinnings || 0
+            });
+            
+            if (userData.telegramId) {
+                try {
+                    const result = await API.getUserProfile(userData.telegramId);
+                    if (result.success) {
+                        setUser(result.user);
+                        setStats({
+                            gamesPlayed: result.user.gamesPlayed || 0,
+                            gamesWon: result.user.gamesWon || 0,
+                            totalWinnings: result.user.totalWinnings || 0
+                        });
+                        localStorage.setItem('user', JSON.stringify(result.user));
+                    }
+                } catch (error) {
+                    console.log('Using local profile data:', error.message);
+                }
+            }
+        }
+    };
+
+    const handleTelegramPayment = async (amount) => {
+        if (!user || !window.Telegram?.WebApp) {
+            alert('Пополнение доступно только в Telegram');
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            // Создаем инвойс для Telegram Stars
+            const invoiceResult = await API.createInvoice(user.telegramId, amount);
+            
+            if (invoiceResult.success) {
+                
+                // Для Telegram Stars
+                const paymentData = {
+                    title: `Purchase ${amount} Stars`,
+                    description: `Get ${amount} Telegram Stars for the game`,
+                    payload: invoiceResult.payment.payload,
+                    provider_token: invoiceResult.payment.provider_token || 'TEST',
+                    currency: 'XTR', // Важно для Stars
+                    prices: invoiceResult.payment.prices,
+                    need_name: false,
+                    need_phone_number: false, 
+                    need_email: false,
+                    need_shipping_address: false
+                };
+
+                console.log('Opening Telegram Stars payment:', paymentData);
+
+                // Открываем платежную форму Stars
+                window.Telegram.WebApp.openInvoice(paymentData, (status) => {
+                    console.log('Telegram Stars payment status:', status);
+                    
+                    if (status === 'paid') {
+                        // Платеж успешен - подтверждаем
+                        API.confirmPayment({
+                            telegram_payment_charge_id: 'stars_payment_' + Date.now(),
+                            provider_payment_charge_id: 'telegram_stars',
+                            payload: invoiceResult.payment.payload
+                        }).then(result => {
+                            if (result.success) {
+                                alert(`✅ Successfully purchased ${amount} Stars!`);
+                                loadUserData(); // Перезагружаем данные пользователя
+                                
+                                // Обновляем баланс в хедере
+                                window.dispatchEvent(new CustomEvent('balanceUpdated', {
+                                    detail: { balance: result.newBalance }
+                                }));
+                            } else {
+                                alert('❌ Error confirming payment');
+                            }
+                        }).catch(error => {
+                            console.error('Payment confirmation error:', error);
+                            alert('❌ Payment confirmation failed');
+                        });
+                    } else if (status === 'failed') {
+                        alert('❌ Payment failed');
+                    } else if (status === 'cancelled') {
+                        alert('⚠️ Payment cancelled');
+                    } else {
+                        alert('❌ Unknown payment status: ' + status);
+                    }
+                });
+                
+            } else {
+                alert('❌ Failed to create payment invoice');
+            }
+        } catch (error) {
+            console.error('Stars payment error:', error);
+            
+            // Fallback: пробуем демо-платеж если основной не сработал
+            try {
+                console.log('Trying demo payment as fallback...');
+                const demoResult = await API.demoPayment(user.telegramId, amount);
+
+                if (demoResult.success) {
+                    alert(`✅ Демо-режим: баланс пополнен на ${amount} ⭐`);
+                    loadUserData();
+                    window.dispatchEvent(new CustomEvent('balanceUpdated', {
+                        detail: { balance: demoResult.newBalance }
+                    }));
+                } else {
+                    alert('❌ Ошибка при пополнении баланса');
+                }
+            } catch (demoError) {
+                console.error('Demo payment also failed:', demoError);
+                alert('❌ Все методы платежа не сработали');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return React.createElement('div', { className: 'profile' },
+        React.createElement('div', { className: 'profile-header' },
+            React.createElement('h1', null, '👤 Ваш профиль'),
+            user && React.createElement('p', { style: { marginTop: '0.5rem', opacity: 0.8 } }, 
+                `ID: ${user.telegramId}`
+            )
+        ),
+        
+        React.createElement('div', { className: 'stats-grid' },
+            React.createElement('div', { className: 'stat-card' },
+                React.createElement('h3', null, 'Сыграно игр'),
+                React.createElement('div', { className: 'stat-value' }, stats.gamesPlayed)
+            ),
+            React.createElement('div', { className: 'stat-card' },
+                React.createElement('h3', null, 'Выиграно игр'),
+                React.createElement('div', { className: 'stat-value' }, stats.gamesWon)
+            ),
+            React.createElement('div', { className: 'stat-card' },
+                React.createElement('h3', null, 'Общий выигрыш'),
+                React.createElement('div', { className: 'stat-value' }, `${stats.totalWinnings} ⭐`)
+            ),
+            React.createElement('div', { className: 'stat-card' },
+                React.createElement('h3', null, 'Процент побед'),
+                React.createElement('div', { className: 'stat-value' },
+                    stats.gamesPlayed > 0 
+                        ? `${((stats.gamesWon / stats.gamesPlayed) * 100).toFixed(1)}%`
+                        : '0%'
+                )
+            )
+        ),
+        
+        user && React.createElement('div', { className: 'balance-display' },
+            React.createElement('h2', null, '💰 Текущий баланс'),
+            React.createElement('div', { 
+                style: { 
+                    fontSize: '2.5rem', 
+                    fontWeight: 'bold', 
+                    color: '#ffd700',
+                    textAlign: 'center',
+                    margin: '1rem 0'
+                } 
+            }, `${user.balance} ⭐`)
+        ),
+
+        React.createElement('div', { className: 'profile-actions' },
+            React.createElement('h2', null, '💫 Пополнение баланса'),
+            React.createElement('p', { style: { textAlign: 'center', marginBottom: '1rem', opacity: 0.8 } },
+                'Пополните баланс Telegram Stars для участия в играх'
+            ),
+            React.createElement('div', { className: 'action-buttons' },
+                React.createElement('button', { 
+                    className: 'control-button primary',
+                    onClick: () => handleTelegramPayment(10),
+                    disabled: loading
+                }, loading ? 'Обработка...' : 'Пополнить 10 ⭐'),
+                React.createElement('button', { 
+                    className: 'control-button primary',
+                    onClick: () => handleTelegramPayment(50),
+                    disabled: loading
+                }, loading ? 'Обработка...' : 'Пополнить 50 ⭐'),
+                React.createElement('button', { 
+                    className: 'control-button primary',
+                    onClick: () => handleTelegramPayment(100),
+                    disabled: loading
+                }, loading ? 'Обработка...' : 'Пополнить 100 ⭐')
+            )
+        )
+    );
+};
+
+// Main App Component
+const App = () => {
+    const [currentPage, setCurrentPage] = useState('home');
+    const [isInitialized, setIsInitialized] = useState(false);
+
+    useEffect(() => {
+        const handleHashChange = () => {
+            const hash = window.location.hash.replace('#', '') || 'home';
+            setCurrentPage(hash);
+        };
+
+        if (window.Telegram?.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+            window.Telegram.WebApp.setHeaderColor('#2c2c2c');
+            window.Telegram.WebApp.setBackgroundColor('#667eea');
+            console.log('Telegram Web App initialized');
+        }
+
+        window.addEventListener('hashchange', handleHashChange);
+        handleHashChange();
+        
+        setIsInitialized(true);
+
+        return () => window.removeEventListener('hashchange', handleHashChange);
+    }, []);
+
+    const renderPage = () => {
+        if (!isInitialized) {
+            return React.createElement('div', { className: 'loading' }, 'Загрузка приложения...');
+        }
+
+        switch(currentPage) {
+            case 'game': 
+                return React.createElement(Game);
+            case 'profile': 
+                return React.createElement(Profile);
+            default: 
+                return React.createElement(Home);
+        }
+    };
+
+    return React.createElement('div', { className: 'App' },
+        React.createElement(Header),
+        React.createElement('main', null, renderPage())
+    );
+};
+
+// Error Boundary
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error('App Error:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return React.createElement('div', { 
+                style: { 
+                    padding: '2rem', 
+                    textAlign: 'center',
+                    color: 'white'
+                } 
+            },
+                React.createElement('h1', null, '😵 Произошла ошибка'),
+                React.createElement('p', null, 'Пожалуйста, перезагрузите приложение'),
+                React.createElement('button', {
+                    onClick: () => window.location.reload(),
+                    style: {
+                        padding: '1rem 2rem',
+                        background: '#ff6b6b',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '10px',
+                        cursor: 'pointer',
+                        marginTop: '1rem'
+                    }
+                }, 'Перезагрузить')
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
+// Modern React 18 rendering
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+    React.createElement(ErrorBoundary, null,
+        React.createElement(App)
+    )
+);
+
