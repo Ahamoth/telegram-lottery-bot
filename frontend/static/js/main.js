@@ -608,22 +608,68 @@ const Game = () => {
     };
 
     const startGame = async () => {
-        if (players.length < 2) {
-            alert('Нужно минимум 2 игрока для начала игры!');
-            return;
+  console.log('🔄 Attempting to start game...');
+  
+  // Локальная проверка перед запросом к API
+  if (players.length < 2) {
+    alert('❌ Нужно минимум 2 игрока для начала игры! Сейчас: ' + players.length);
+    return;
+  }
+
+  try {
+    console.log('🚀 Sending start request to API...');
+    const result = await API.startGame();
+    
+    if (result.success) {
+      console.log('✅ Game started successfully via API');
+      setGameState('active');
+      setWinners([]);
+      setWinningNumbers(null);
+    } else {
+      console.warn('⚠️ API returned success: false', result);
+      // Используем локальный запуск если API не сработал
+      startGameLocal();
+    }
+  } catch (error) {
+    console.error('❌ API start failed, using local mode:', error);
+    
+    // Показываем детальную ошибку от сервера
+    if (error.message.includes('400')) {
+      try {
+        const errorResponse = await error.response?.json();
+        if (errorResponse?.details) {
+          alert(`❌ ${errorResponse.error}\n${errorResponse.details}`);
+        } else {
+          alert('❌ Не удалось начать игру: недостаточно игроков на сервере');
         }
-        
-        try {
-            await API.startGame();
-        } catch (error) {
-            console.log('Using local game start:', error.message);
-        }
-        
-        console.log('=== НАЧАЛО ИГРЫ ===');
-        setGameState('active');
-        setWinners([]);
-        setWinningNumbers(null);
-    };
+      } catch {
+        alert('❌ Не удалось начать игру: недостаточно игроков');
+      }
+    } else {
+      // Используем локальный запуск как fallback
+      startGameLocal();
+    }
+  }
+};
+
+const startGameLocal = () => {
+  console.log('🎮 Starting game locally...');
+  
+  if (players.length < 2) {
+    alert('❌ Нужно минимум 2 игрока для начала игры! Сейчас: ' + players.length);
+    return;
+  }
+
+  console.log('=== НАЧАЛО ИГРЫ (локально) ===');
+  setGameState('active');
+  setWinners([]);
+  setWinningNumbers(null);
+  
+  // Логируем детали для отладки
+  console.log('Players in local start:', players);
+  console.log('Real players:', players.filter(p => !p.isBot).length);
+  console.log('Bots:', players.filter(p => p.isBot).length);
+};
 
     const handleSpinComplete = (winningNums) => {
         console.log('Рулетка завершила вращение. Выигрышные номера:', winningNums);
@@ -1141,4 +1187,5 @@ root.render(
         React.createElement(App)
     )
 );
+
 
