@@ -4,7 +4,19 @@ const crypto = require('crypto');
 module.exports = (pool) => {
   const router = express.Router();
 
-  // Create payment invoice
+  // Конфигурация платежей для Telegram Stars
+  const PAYMENT_CONFIG = {
+    // Для Telegram Stars оставляем пустым или 'TEST'
+    provider_token: process.env.PROVIDER_TOKEN || 'TEST',
+    currency: 'XTR', // Валюта Stars
+    prices: {
+      10: 10,   // 10 звезд = 10 единиц
+      50: 50,   // 50 звезд = 50 единиц  
+      100: 100  // 100 звезд = 100 единиц
+    }
+  };
+
+  // Create payment invoice для Telegram Stars
   router.post('/create-invoice', async (req, res) => {
     try {
       const { telegramId, amount, currency = 'XTR' } = req.body;
@@ -42,41 +54,44 @@ module.exports = (pool) => {
          (telegram_id, type, amount, status) 
          VALUES ($1, $2, $3, $4) 
          RETURNING *`,
-        [telegramId, 'deposit', amount, 'pending']
+        [telegramId, 'stars_deposit', amount, 'pending']
       );
 
       const payment = paymentResult.rows[0];
 
-      // Для демо-режима возвращаем успех сразу
-      // В реальном приложении здесь будет интеграция с Telegram Payments API
+      // Для Telegram Stars
       res.json({
         success: true,
         payment: {
           id: payment.id,
           amount: amount,
-          currency: currency,
-          description: `Пополнение баланса на ${amount} ⭐`,
+          currency: 'XTR', // Telegram Stars currency
+          description: `Purchase ${amount} Stars`,
           payload: JSON.stringify({
             paymentId: payment.id,
             telegramId: telegramId,
-            amount: amount
-          })
+            amount: amount,
+            product: 'stars'
+          }),
+          provider_token: PAYMENT_CONFIG.provider_token, // 'TEST' или пусто
+          prices: [{
+            label: `${amount} Telegram Stars`,
+            amount: PAYMENT_CONFIG.prices[amount] || amount
+          }]
         },
-        // Демо-режим: сразу возвращаем успешный платеж
-        demoMode: true,
-        message: 'Демо-режим: платеж успешно обработан'
+        stars_payment: true
       });
 
     } catch (error) {
-      console.error('Create invoice error:', error);
+      console.error('Create stars invoice error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to create payment invoice'
+        error: 'Failed to create stars invoice'
       });
     }
   });
 
-  // Handle payment confirmation from Telegram
+  // Handle payment confirmation from Telegram Stars
   router.post('/confirm-payment', async (req, res) => {
     const client = await pool.connect();
     
@@ -89,22 +104,31 @@ module.exports = (pool) => {
         payload
       } = req.body;
 
-      // Для демо-режима принимаем платежи без проверки
+      console.log('💰 Processing Stars payment confirmation:', {
+        telegram_payment_charge_id,
+        provider_payment_charge_id
+      });
+
       let paymentData;
       try {
         paymentData = JSON.parse(payload);
       } catch (parseError) {
-        // Если payload не парсится, создаем демо-данные
-        paymentData = {
-          paymentId: 'demo_' + Date.now(),
-          telegramId: req.body.telegramId || 'unknown',
-          amount: req.body.amount || 10
-        };
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid payment data'
+        });
       }
 
       const { paymentId, telegramId, amount } = paymentData;
 
-      console.log('💰 Processing payment:', { paymentId, telegramId, amount });
+      if (!telegramId || !amount) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          success: false,
+          error: 'Missing payment data'
+        });
+      }
 
       // Проверяем существование пользователя
       const userResult = await client.query(
@@ -120,26 +144,36 @@ module.exports = (pool) => {
         });
       }
 
-      // Создаем или обновляем транзакцию
+      // Обновляем или создаем транзакцию
       let transaction;
-      if (paymentId && paymentId.startsWith('demo_')) {
-        // Демо-транзакция
-        const transactionResult = await client.query(
-          `INSERT INTO transactions 
-           (telegram_id, type, amount, status, provider_payment_charge_id, telegram_payment_charge_id) 
-           VALUES ($1, $2, $3, $4, $5, $6) 
+      
+      // Проверяем существующую pending транзакцию
+      const existingTransaction = await client.query(
+        'SELECT * FROM transactions WHERE id = $1 AND status = $2',
+        [paymentId, 'pending']
+      );
+
+      if (existingTransaction.rows.length > 0) {
+        // Обновляем существующую транзакцию
+        const updateResult = await client.query(
+          `UPDATE transactions SET 
+           status = $1,
+           provider_payment_charge_id = $2,
+           telegram_payment_charge_id = $3,
+           updated_at = CURRENT_TIMESTAMP
+           WHERE id = $4
            RETURNING *`,
-          [telegramId, 'deposit', amount, 'completed', 'demo_provider', 'demo_telegram']
+          ['completed', provider_payment_charge_id, telegram_payment_charge_id, paymentId]
         );
-        transaction = transactionResult.rows[0];
+        transaction = updateResult.rows[0];
       } else {
-        // Реальная транзакция
+        // Создаем новую транзакцию
         const transactionResult = await client.query(
           `INSERT INTO transactions 
            (telegram_id, type, amount, status, provider_payment_charge_id, telegram_payment_charge_id) 
            VALUES ($1, $2, $3, $4, $5, $6) 
            RETURNING *`,
-          [telegramId, 'deposit', amount, 'completed', provider_payment_charge_id, telegram_payment_charge_id]
+          [telegramId, 'stars_deposit', amount, 'completed', provider_payment_charge_id, telegram_payment_charge_id]
         );
         transaction = transactionResult.rows[0];
       }
@@ -160,7 +194,12 @@ module.exports = (pool) => {
 
       await client.query('COMMIT');
 
-      console.log('✅ Payment processed successfully:', { telegramId, amount, newBalance });
+      console.log('✅ Stars payment confirmed successfully:', {
+        telegramId,
+        amount,
+        newBalance,
+        transactionId: transaction.id
+      });
 
       res.json({
         success: true,
@@ -171,45 +210,17 @@ module.exports = (pool) => {
 
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('❌ Confirm payment error:', error);
+      console.error('❌ Confirm Stars payment error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to confirm payment'
+        error: 'Failed to confirm Stars payment'
       });
     } finally {
       client.release();
     }
   });
 
-  // Get payment history
-  router.get('/history/:telegramId', async (req, res) => {
-    try {
-      const { telegramId } = req.params;
-      const { limit = 10 } = req.query;
-
-      const paymentsResult = await pool.query(
-        `SELECT * FROM transactions 
-         WHERE telegram_id = $1 
-         ORDER BY created_at DESC 
-         LIMIT $2`,
-        [telegramId, limit]
-      );
-
-      res.json({
-        success: true,
-        payments: paymentsResult.rows
-      });
-
-    } catch (error) {
-      console.error('Payment history error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get payment history'
-      });
-    }
-  });
-
-  // Демо-эндпоинт для тестирования платежей
+  // Демо-платежи для тестирования (без реальных платежей)
   router.post('/demo-payment', async (req, res) => {
     const client = await pool.connect();
     
@@ -246,7 +257,7 @@ module.exports = (pool) => {
          (telegram_id, type, amount, status, provider_payment_charge_id, telegram_payment_charge_id) 
          VALUES ($1, $2, $3, $4, $5, $6) 
          RETURNING *`,
-        [telegramId, 'deposit', amount, 'completed', 'demo_provider_' + Date.now(), 'demo_telegram_' + Date.now()]
+        [telegramId, 'demo_deposit', amount, 'completed', 'demo_provider_' + Date.now(), 'demo_telegram_' + Date.now()]
       );
 
       // Обновляем баланс
@@ -265,6 +276,8 @@ module.exports = (pool) => {
 
       await client.query('COMMIT');
 
+      console.log('✅ Demo payment processed:', { telegramId, amount, newBalance });
+
       res.json({
         success: true,
         newBalance: newBalance,
@@ -281,6 +294,42 @@ module.exports = (pool) => {
       });
     } finally {
       client.release();
+    }
+  });
+
+  // Get payment history
+  router.get('/history/:telegramId', async (req, res) => {
+    try {
+      const { telegramId } = req.params;
+      const { limit = 10 } = req.query;
+
+      const paymentsResult = await pool.query(
+        `SELECT 
+          id,
+          type,
+          amount,
+          status,
+          provider_payment_charge_id,
+          telegram_payment_charge_id,
+          created_at
+         FROM transactions 
+         WHERE telegram_id = $1 
+         ORDER BY created_at DESC 
+         LIMIT $2`,
+        [telegramId, limit]
+      );
+
+      res.json({
+        success: true,
+        payments: paymentsResult.rows
+      });
+
+    } catch (error) {
+      console.error('Payment history error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get payment history'
+      });
     }
   });
 
