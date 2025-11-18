@@ -1,91 +1,69 @@
 const express = require('express');
-const User = require('../models/User');
-const router = express.Router();
 
-// Get user profile
-router.get('/profile/:telegramId', async (req, res) => {
-  try {
-    const { telegramId } = req.params;
-    
-    const user = await User.findOne({ telegramId });
-    
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    res.json({
-      success: true,
-      user: {
-        telegramId: user.telegramId,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        balance: user.balance,
-        gamesPlayed: user.gamesPlayed || 0,
-        gamesWon: user.gamesWon || 0,
-        totalWinnings: user.totalWinnings || 0
+module.exports = (pool) => {
+  const router = express.Router();
+
+  // Get user profile
+  router.get('/profile/:telegramId', async (req, res) => {
+    try {
+      const { telegramId } = req.params;
+      
+      const userResult = await pool.query(
+        'SELECT * FROM users WHERE telegram_id = $1',
+        [telegramId]
+      );
+      
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
       }
-    });
-  } catch (error) {
-    console.error('Profile error:', error);
-    res.status(500).json({ error: 'Failed to get profile' });
-  }
-});
-
-// Update user balance
-router.post('/balance', async (req, res) => {
-  try {
-    const { telegramId, amount } = req.body;
-    
-    const user = await User.findOne({ telegramId });
-    
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      
+      const user = userResult.rows[0];
+      
+      res.json({
+        success: true,
+        user: {
+          telegramId: user.telegram_id,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          username: user.username,
+          balance: user.balance,
+          gamesPlayed: user.games_played,
+          gamesWon: user.games_won,
+          totalWinnings: user.total_winnings
+        }
+      });
+    } catch (error) {
+      console.error('Profile error:', error);
+      res.status(500).json({ error: 'Failed to get profile' });
     }
-    
-    user.balance += amount;
-    await user.save();
-    
-    res.json({
-      success: true,
-      newBalance: user.balance,
-      message: `Balance updated by ${amount}`
-    });
-  } catch (error) {
-    console.error('Balance update error:', error);
-    res.status(500).json({ error: 'Failed to update balance' });
-  }
-});
+  });
 
-// Get user stats
-router.get('/stats/:telegramId', async (req, res) => {
-  try {
-    const { telegramId } = req.params;
-    
-    const user = await User.findOne({ telegramId });
-    
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const winRate = user.gamesPlayed > 0 
-      ? ((user.gamesWon / user.gamesPlayed) * 100).toFixed(1)
-      : 0;
-    
-    res.json({
-      success: true,
-      stats: {
-        gamesPlayed: user.gamesPlayed || 0,
-        gamesWon: user.gamesWon || 0,
-        totalWinnings: user.totalWinnings || 0,
-        winRate: winRate,
-        balance: user.balance
+  // Update user balance
+  router.post('/balance', async (req, res) => {
+    try {
+      const { telegramId, amount } = req.body;
+      
+      const userResult = await pool.query(
+        'UPDATE users SET balance = balance + $1 WHERE telegram_id = $2 RETURNING *',
+        [amount, telegramId]
+      );
+      
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
       }
-    });
-  } catch (error) {
-    console.error('Stats error:', error);
-    res.status(500).json({ error: 'Failed to get stats' });
-  }
-});
+      
+      const user = userResult.rows[0];
+      
+      res.json({
+        success: true,
+        newBalance: user.balance,
+        message: `Balance updated by ${amount}`
+      });
+    } catch (error) {
+      console.error('Balance update error:', error);
+      res.status(500).json({ error: 'Failed to update balance' });
+    }
+  });
 
-module.exports = router;
+  return router;
+};
