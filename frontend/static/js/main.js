@@ -62,10 +62,17 @@ const API = {
     return this.request(`/user/profile/${telegramId}`);
   },
 
-  async updateBalance(telegramId, amount) {
-    return this.request('/user/balance', {
+  async createInvoice(telegramId, amount) {
+    return this.request('/payment/create-invoice', {
       method: 'POST',
-      body: JSON.stringify({ telegramId, amount }),
+      body: JSON.stringify({ telegramId, amount, currency: 'XTR' }),
+    });
+  },
+
+  async confirmPayment(paymentData) {
+    return this.request('/payment/confirm-payment', {
+      method: 'POST',
+      body: JSON.stringify(paymentData),
     });
   }
 };
@@ -73,7 +80,7 @@ const API = {
 // Header Component
 const Header = () => {
     const [user, setUser] = useState(null);
-    const [balance, setBalance] = useState(1000);
+    const [balance, setBalance] = useState(0);
     const [userAvatar, setUserAvatar] = useState('👤');
     
     useEffect(() => {
@@ -114,11 +121,11 @@ const Header = () => {
                     }));
                 }
             } catch (error) {
-                console.error('Telegram auth failed, using fallback:', error);
-                loadFallbackUser();
+                console.error('Telegram auth failed:', error);
+                alert('❌ Ошибка авторизации. Пожалуйста, откройте приложение через Telegram бота.');
             }
         } else {
-            loadFallbackUser();
+            alert('❌ Это приложение работает только внутри Telegram. Пожалуйста, откройте через бота.');
         }
     };
 
@@ -138,29 +145,6 @@ const Header = () => {
         }
         
         return '👤';
-    };
-
-    const loadFallbackUser = () => {
-        const savedUser = localStorage.getItem('user');
-        if (savedUser) {
-            const userData = JSON.parse(savedUser);
-            setUser(userData);
-            setBalance(userData.balance);
-            setUserAvatar(userData.avatar || '👤');
-        } else {
-            const demoUser = {
-                telegramId: 'demo-user',
-                firstName: 'Demo',
-                lastName: 'User',
-                username: 'demo',
-                balance: 1000,
-                avatar: '🤖'
-            };
-            setUser(demoUser);
-            setBalance(demoUser.balance);
-            setUserAvatar(demoUser.avatar);
-            localStorage.setItem('user', JSON.stringify(demoUser));
-        }
     };
 
     const navigateTo = (page) => {
@@ -207,41 +191,45 @@ const Home = () => {
     return React.createElement('div', { className: 'home' },
         React.createElement('div', { className: 'hero' },
             React.createElement('h1', null, '🎰 Счастливый Номер'),
-            React.createElement('p', null, 'Моментальная лотерея с реальными игроками из Telegram!'),
-            React.createElement('p', null, 'Получи номер от 1 до 10 и выигрывай звезды вместе с другими игроками!'),
+            React.createElement('p', null, 'Реальная лотерея с Telegram Stars!'),
+            React.createElement('p', null, 'Получи номер от 1 до 10 и выигрывай настоящие звезды с реальными игроками!'),
             React.createElement('button', { 
                 className: 'cta-button',
                 onClick: () => navigateTo('game')
             }, 'Начать играть')
         ),
         React.createElement('div', { className: 'how-to-play' },
-            React.createElement('h2', null, 'Как играть?'),
+            React.createElement('h2', null, '🎯 Как играть?'),
             React.createElement('ol', null,
+                React.createElement('li', null, 'Пополните баланс звездами в разделе Профиль'),
                 React.createElement('li', null, 'Нажмите "Начать играть" чтобы присоединиться к лобби'),
                 React.createElement('li', null, 'Каждому игроку присваивается уникальный номер от 1 до 10'),
-                React.createElement('li', null, 'Когда набирается 10 игроков - игра начинается автоматически'),
+                React.createElement('li', null, 'Когда набирается 2+ реальных игроков - игра начинается'),
                 React.createElement('li', null, 'Запускается анимированная рулетка'),
                 React.createElement('li', null, 'Определяются 3 выигрышных номера'),
-                React.createElement('li', null, 'Победители получают звезды на свой баланс')
+                React.createElement('li', null, 'Победители получают реальные звезды на баланс')
             ),
             React.createElement('p', { style: { marginTop: '1rem', fontWeight: 'bold', textAlign: 'center' } }, 
-                'Призы: Главный приз - 50% банка, дополнительные - по 25% банка!'
+                '💰 Призы: Главный приз - 50% банка, дополнительные - по 25% банка!'
+            ),
+            React.createElement('p', { style: { marginTop: '0.5rem', textAlign: 'center', color: '#ffd700' } }, 
+                '🎮 Вход в игру: 10 ⭐ с игрока'
             )
         ),
         React.createElement('div', { className: 'features' },
-            React.createElement('h2', null, 'Почему выбирают нас?'),
+            React.createElement('h2', null, '⭐ Почему выбирают нас?'),
             React.createElement('div', { className: 'features-grid' },
                 React.createElement('div', { className: 'feature-card' },
-                    React.createElement('h3', null, '👥 Реальные игроки'),
-                    React.createElement('p', null, 'Играйте с реальными пользователями из Telegram')
+                    React.createElement('h3', null, '👥 Только реальные игроки'),
+                    React.createElement('p', null, 'Играйте с реальными пользователями из Telegram. Никаких ботов!')
                 ),
                 React.createElement('div', { className: 'feature-card' },
-                    React.createElement('h3', null, '⭐ Звезды'),
-                    React.createElement('p', null, 'Выигрывайте настоящие звезды которые можно вывести')
+                    React.createElement('h3', null, '💫 Настоящие звезды'),
+                    React.createElement('p', null, 'Выигрывайте и проигрывайте реальные Telegram Stars')
                 ),
                 React.createElement('div', { className: 'feature-card' },
-                    React.createElement('h3', null, '⚡ Моментально'),
-                    React.createElement('p', null, 'Результаты сразу после заполнения лобби')
+                    React.createElement('h3', null, '⚡ Честная игра'),
+                    React.createElement('p', null, 'Прозрачная система розыгрыша и моментальные выплаты')
                 )
             )
         )
@@ -341,9 +329,9 @@ const Game = () => {
     const [winningNumbers, setWinningNumbers] = useState(null);
     const [bankAmount, setBankAmount] = useState(0);
     const [joinTime, setJoinTime] = useState(null);
-    const [botsAdded, setBotsAdded] = useState(0);
     const [currentUser, setCurrentUser] = useState(null);
     const [userNumber, setUserNumber] = useState(null);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         const savedUser = localStorage.getItem('user');
@@ -361,26 +349,6 @@ const Game = () => {
         }
     }, [gameState]);
 
-    useEffect(() => {
-        if (gameState !== 'waiting') return;
-        
-        const botInterval = setInterval(() => {
-            addBotPlayer();
-        }, 2000);
-        
-        return () => clearInterval(botInterval);
-    }, [gameState, players]);
-
-    useEffect(() => {
-        if (players.length === 10 && gameState === 'waiting') {
-            console.log('Достигнуто 10 игроков, запускаем игру через 3 секунды...');
-            const timer = setTimeout(() => {
-                startGame();
-            }, 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [players.length, gameState]);
-
     const syncGameState = async () => {
         try {
             const gameData = await API.getCurrentGame();
@@ -390,14 +358,14 @@ const Game = () => {
                 setGameState(gameData.status || 'waiting');
                 
                 const userPlayer = gameData.players.find(p => 
-                    p.telegramId === (currentUser?.telegramId || 'demo-user')
+                    p.telegramId === (currentUser?.telegramId)
                 );
                 if (userPlayer) {
                     setUserNumber(userPlayer.number);
                 }
             }
         } catch (error) {
-            console.log('Using local game state:', error.message);
+            console.log('Error syncing game state:', error.message);
         }
     };
 
@@ -405,53 +373,8 @@ const Game = () => {
         setPlayers([]);
         setBankAmount(0);
         setJoinTime(Date.now());
-        setBotsAdded(0);
         setUserNumber(null);
         console.log('Игра инициализирована');
-    };
-
-    const addBotPlayer = () => {
-        if (players.length >= 10 || gameState !== 'waiting') return;
-        
-        const currentPlayerCount = players.length;
-        const hasCurrentUser = players.find(p => !p.isBot);
-        
-        if (!hasCurrentUser && currentPlayerCount === 0) return;
-        
-        const freeNumbers = getFreeNumbers(players);
-        if (freeNumbers.length === 0) return;
-        
-        const botNumber = freeNumbers[0];
-        const botAvatars = ['🤖', '👾', '🤡', '💀', '👻', '🐵', '🐸', '🦁', '🐲', '🦄'];
-        const botNames = ['Бот_Алекс', 'Бот_Макс', 'Бот_Даня', 'Бот_Саша', 'Бот_Костя', 'Бот_Ник', 'Бот_Майк', 'Бот_Джон'];
-        
-        const botAvatar = botAvatars[botsAdded % botAvatars.length];
-        const botName = botNames[botsAdded % botNames.length];
-        
-        const newBot = {
-            id: `bot-${Date.now()}-${Math.random()}`,
-            telegramId: `bot-${botsAdded + 1}`,
-            name: botName,
-            number: botNumber,
-            avatar: botAvatar,
-            isBot: true
-        };
-        
-        const newPlayers = [...players, newBot];
-        setPlayers(newPlayers);
-        setBankAmount(calculateBank(newPlayers.length));
-        setBotsAdded(prev => prev + 1);
-        
-        console.log(`Добавлен бот ${botName} #${botNumber}. Всего игроков: ${newPlayers.length}`);
-    };
-
-    const calculateBank = (playerCount) => {
-        return playerCount * 10;
-    };
-
-    const getFreeNumbers = (currentPlayers) => {
-        const usedNumbers = currentPlayers.map(p => p.number);
-        return [1,2,3,4,5,6,7,8,9,10].filter(num => !usedNumbers.includes(num));
     };
 
     const getUserAvatar = (user) => {
@@ -472,7 +395,7 @@ const Game = () => {
             return;
         }
         
-        if (players.find(p => !p.isBot)) {
+        if (players.find(p => p.telegramId === currentUser?.telegramId)) {
             alert('Вы уже в лобби!');
             return;
         }
@@ -481,6 +404,13 @@ const Game = () => {
             alert('Ошибка: пользователь не найден');
             return;
         }
+        
+        if (currentUser.balance < 10) {
+            alert('❌ Недостаточно звезд для входа в игру!\n\nНужно: 10 ⭐\nНа балансе: ' + currentUser.balance + ' ⭐\n\nПополните баланс в разделе Профиль.');
+            return;
+        }
+        
+        setLoading(true);
         
         try {
             const userAvatar = getUserAvatar(currentUser);
@@ -519,75 +449,29 @@ const Game = () => {
                 alert(`✅ Вы присоединились к игре! Ваш номер: ${result.userNumber}\nСписано: 10 ⭐`);
             }
         } catch (error) {
-            console.error('Backend join failed, using local mode:', error);
-            joinGameLocal();
+            console.error('Join game failed:', error);
+            if (error.message.includes('400')) {
+                try {
+                    const errorResponse = await error.response?.json();
+                    alert(`❌ ${errorResponse.error}`);
+                } catch {
+                    alert('❌ Не удалось присоединиться к игре');
+                }
+            } else {
+                alert('❌ Ошибка соединения с сервером');
+            }
+        } finally {
+            setLoading(false);
         }
-    };
-
-    const joinGameLocal = () => {
-        const freeNumbers = getFreeNumbers(players);
-        if (freeNumbers.length === 0) {
-            alert('Нет свободных номеров!');
-            return;
-        }
-        
-        const userNumber = freeNumbers[Math.floor(Math.random() * freeNumbers.length)];
-        const userAvatar = getUserAvatar(currentUser);
-        const userName = currentUser.firstName || 'Вы';
-        
-        const userPlayer = {
-            id: 'current-user',
-            telegramId: currentUser.telegramId,
-            name: userName,
-            number: userNumber,
-            avatar: userAvatar,
-            isBot: false
-        };
-        
-        const newBalance = currentUser.balance - 10;
-        const updatedUser = { 
-            ...currentUser, 
-            balance: newBalance,
-            avatar: userAvatar 
-        };
-        setCurrentUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        
-        const newPlayers = [...players, userPlayer];
-        setPlayers(newPlayers);
-        setBankAmount(calculateBank(newPlayers.length));
-        setUserNumber(userNumber);
-        setJoinTime(Date.now());
-        
-        window.dispatchEvent(new CustomEvent('balanceUpdated', {
-            detail: { balance: newBalance }
-        }));
-        
-        console.log('Пользователь присоединился с номером', userNumber);
-        alert(`✅ Вы присоединились к игре! Ваш номер: ${userNumber}\nСписано: 10 ⭐`);
     };
 
     const leaveGame = async () => {
-        const userPlayer = players.find(p => !p.isBot);
-        if (userPlayer) {
-            try {
-                const result = await API.leaveGame(currentUser.telegramId);
-                if (result.success) {
-                    const newBalance = result.newBalance;
-                    const updatedUser = { ...currentUser, balance: newBalance };
-                    setCurrentUser(updatedUser);
-                    localStorage.setItem('user', JSON.stringify(updatedUser));
-                    
-                    window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                        detail: { balance: newBalance }
-                    }));
-                    
-                    alert(`Вы покинули лобби. Возвращено: 10 ⭐`);
-                }
-            } catch (error) {
-                console.error('Backend leave failed, using local mode:', error);
-                // Local fallback
-                const newBalance = currentUser.balance + 10;
+        if (!currentUser) return;
+        
+        try {
+            const result = await API.leaveGame(currentUser.telegramId);
+            if (result.success) {
+                const newBalance = result.newBalance;
                 const updatedUser = { ...currentUser, balance: newBalance };
                 setCurrentUser(updatedUser);
                 localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -596,80 +480,66 @@ const Game = () => {
                     detail: { balance: newBalance }
                 }));
                 
-                alert(`Вы покинули лобби. Возвращено: 10 ⭐`);
+                alert(`✅ Вы покинули лобби. Возвращено: 10 ⭐`);
             }
+        } catch (error) {
+            console.error('Leave game failed:', error);
+            alert('❌ Ошибка при выходе из лобби');
         }
         
-        const newPlayers = players.filter(p => p.isBot);
+        const newPlayers = players.filter(p => p.telegramId !== currentUser.telegramId);
         setPlayers(newPlayers);
         setBankAmount(calculateBank(newPlayers.length));
         setUserNumber(null);
-        console.log('Пользователь покинул лобби');
+    };
+
+    const calculateBank = (playerCount) => {
+        return playerCount * 10;
     };
 
     const startGame = async () => {
-  console.log('🔄 Attempting to start game...');
-  
-  // Локальная проверка перед запросом к API
-  if (players.length < 2) {
-    alert('❌ Нужно минимум 2 игрока для начала игры! Сейчас: ' + players.length);
-    return;
-  }
-
-  try {
-    console.log('🚀 Sending start request to API...');
-    const result = await API.startGame();
-    
-    if (result.success) {
-      console.log('✅ Game started successfully via API');
-      setGameState('active');
-      setWinners([]);
-      setWinningNumbers(null);
-    } else {
-      console.warn('⚠️ API returned success: false', result);
-      // Используем локальный запуск если API не сработал
-      startGameLocal();
-    }
-  } catch (error) {
-    console.error('❌ API start failed, using local mode:', error);
-    
-    // Показываем детальную ошибку от сервера
-    if (error.message.includes('400')) {
-      try {
-        const errorResponse = await error.response?.json();
-        if (errorResponse?.details) {
-          alert(`❌ ${errorResponse.error}\n${errorResponse.details}`);
-        } else {
-          alert('❌ Не удалось начать игру: недостаточно игроков на сервере');
+        console.log('🔄 Attempting to start game...');
+        
+        // Локальная проверка перед запросом к API
+        const realPlayersCount = players.filter(p => !p.isBot).length;
+        if (realPlayersCount < 2) {
+            alert('❌ Нужно минимум 2 реальных игрока для начала игры! Сейчас: ' + realPlayersCount);
+            return;
         }
-      } catch {
-        alert('❌ Не удалось начать игру: недостаточно игроков');
-      }
-    } else {
-      // Используем локальный запуск как fallback
-      startGameLocal();
-    }
-  }
-};
 
-const startGameLocal = () => {
-  console.log('🎮 Starting game locally...');
-  
-  if (players.length < 2) {
-    alert('❌ Нужно минимум 2 игрока для начала игры! Сейчас: ' + players.length);
-    return;
-  }
-
-  console.log('=== НАЧАЛО ИГРЫ (локально) ===');
-  setGameState('active');
-  setWinners([]);
-  setWinningNumbers(null);
-  
-  // Логируем детали для отладки
-  console.log('Players in local start:', players);
-  console.log('Real players:', players.filter(p => !p.isBot).length);
-  console.log('Bots:', players.filter(p => p.isBot).length);
-};
+        try {
+            console.log('🚀 Sending start request to API...');
+            const result = await API.startGame();
+            
+            if (result.success) {
+                console.log('✅ Game started successfully via API');
+                setGameState('active');
+                setWinners([]);
+                setWinningNumbers(null);
+            } else {
+                console.warn('⚠️ API returned success: false', result);
+                alert('❌ Не удалось начать игру');
+            }
+        } catch (error) {
+            console.error('❌ API start failed:', error);
+            
+            // Показываем детальную ошибку от сервера
+            if (error.message.includes('400')) {
+                try {
+                    const errorResponse = await error.response?.json();
+                    if (errorResponse?.details) {
+                        alert(`❌ ${errorResponse.error}\n${errorResponse.details}`);
+                    } else {
+                        alert('❌ Не удалось начать игру: недостаточно игроков');
+                    }
+                } catch {
+                    alert('❌ Не удалось начать игру: недостаточно игроков');
+                }
+            } else {
+                alert('❌ Ошибка соединения с сервером');
+            }
+        }
+    };
 
     const handleSpinComplete = (winningNums) => {
         console.log('Рулетка завершила вращение. Выигрышные номера:', winningNums);
@@ -717,7 +587,7 @@ const startGameLocal = () => {
 
     const updateUserStats = (winnersList) => {
         const userWinnings = winnersList
-            .filter(winner => !winner.isBot && winner.telegramId === currentUser?.telegramId)
+            .filter(winner => winner.telegramId === currentUser?.telegramId)
             .reduce((total, winner) => total + winner.prize, 0);
         
         if (userWinnings > 0 && currentUser) {
@@ -757,12 +627,14 @@ const startGameLocal = () => {
         initializeGame();
     };
 
-    const isUserInGame = players.some(p => !p.isBot);
+    const isUserInGame = players.some(p => p.telegramId === currentUser?.telegramId);
     const timeInLobby = joinTime ? Math.floor((Date.now() - joinTime) / 1000) : 0;
+    const realPlayersCount = players.filter(p => !p.isBot).length;
 
     console.log('=== ТЕКУЩЕЕ СОСТОЯНИЕ ===');
     console.log('Game State:', gameState);
     console.log('Players:', players.length);
+    console.log('Real Players:', realPlayersCount);
     console.log('User in game:', isUserInGame);
     console.log('User number:', userNumber);
     console.log('Bank:', bankAmount);
@@ -773,7 +645,7 @@ const startGameLocal = () => {
                 React.createElement('div', { className: 'room-info' },
                     React.createElement('h2', null, '👥 Игровое лобби'),
                     React.createElement('div', { className: 'lobby-stats' },
-                        React.createElement('p', null, `Игроков: ${players.length}/10`),
+                        React.createElement('p', null, `Реальных игроков: ${realPlayersCount}/10`),
                         React.createElement('p', null, `Банк: ${bankAmount} ⭐`),
                         userNumber && 
                             React.createElement('p', null, 
@@ -783,9 +655,13 @@ const startGameLocal = () => {
                         React.createElement('p', { style: { fontSize: '0.9rem', opacity: 0.7 } }, 
                             `В лобби: ${Math.floor(timeInLobby / 60)}:${(timeInLobby % 60).toString().padStart(2, '0')}`
                         ),
-                        players.length === 10 && 
-                            React.createElement('p', { style: { color: '#ff6b6b', fontWeight: 'bold', animation: 'pulse 1s infinite' } }, 
-                                '🎯 Игра начнется через 3 секунды...'
+                        realPlayersCount >= 2 && 
+                            React.createElement('p', { style: { color: '#4caf50', fontWeight: 'bold' } }, 
+                                '✅ Достаточно игроков для начала игры!'
+                            ),
+                        realPlayersCount < 2 &&
+                            React.createElement('p', { style: { color: '#ff6b6b', fontWeight: 'bold' } }, 
+                                `❌ Нужно еще ${2 - realPlayersCount} игроков для начала`
                             )
                     ),
                     
@@ -793,20 +669,21 @@ const startGameLocal = () => {
                         React.createElement('button', { 
                             className: 'control-button primary',
                             onClick: joinGame,
-                            disabled: players.length >= 10
-                        }, players.length >= 10 ? 'Лобби заполнено' : `Присоединиться к игре (10 ⭐)`) :
+                            disabled: players.length >= 10 || loading
+                        }, loading ? 'Подключение...' : players.length >= 10 ? 'Лобби заполнено' : `Присоединиться к игре (10 ⭐)`) :
                         React.createElement('div', null,
                             React.createElement('p', { style: { color: '#4caf50', marginBottom: '1rem' } }, 
                                 '✅ Вы в игре! Ожидаем других игроков...'
                             ),
-                            players.length < 10 && 
+                            realPlayersCount < 2 && 
                                 React.createElement('p', { style: { color: '#ffd700', marginBottom: '1rem' } }, 
-                                    `До начала игры: ${10 - players.length} игроков`
+                                    `До начала игры: ${2 - realPlayersCount} игроков`
                                 ),
                             React.createElement('button', { 
                                 className: 'control-button secondary',
-                                onClick: leaveGame
-                            }, 'Покинуть лобби (вернуть 10 ⭐)')
+                                onClick: leaveGame,
+                                disabled: loading
+                            }, loading ? 'Выход...' : 'Покинуть лобби (вернуть 10 ⭐)')
                         )
                 ),
 
@@ -814,18 +691,18 @@ const startGameLocal = () => {
                     players.map(player => 
                         React.createElement('div', { 
                             key: player.id || player.telegramId,
-                            className: `player-card ${!player.isBot ? 'current-user' : ''} ${player.isBot ? 'bot-player' : ''}`
+                            className: `player-card ${player.telegramId === currentUser?.telegramId ? 'current-user' : ''}`
                         },
                             React.createElement('div', { 
                                 className: 'player-avatar',
                                 style: { 
-                                    fontSize: player.isBot ? '1.5rem' : '2rem',
-                                    animation: !player.isBot ? 'pulse 2s infinite' : 'none'
+                                    fontSize: '2rem',
+                                    animation: player.telegramId === currentUser?.telegramId ? 'pulse 2s infinite' : 'none'
                                 }
                             }, player.avatar),
                             React.createElement('div', { className: 'player-name' }, player.name),
                             React.createElement('div', { className: 'player-number' }, `#${player.number}`),
-                            !player.isBot && React.createElement('div', { 
+                            player.telegramId === currentUser?.telegramId && React.createElement('div', { 
                                 className: 'player-badge',
                                 style: { 
                                     background: '#ffd700', 
@@ -858,7 +735,7 @@ const startGameLocal = () => {
                 React.createElement('div', { className: 'room-info' },
                     React.createElement('h2', null, '🎯 Игра началась!'),
                     React.createElement('p', null, `Банк: ${bankAmount} ⭐`),
-                    React.createElement('p', null, `Игроков: ${players.length}`),
+                    React.createElement('p', null, `Игроков: ${realPlayersCount}`),
                     React.createElement('p', { style: { color: '#ffd700' } }, 'Рулетка запускается автоматически...')
                 ),
                 React.createElement(Roulette, { onSpinComplete: handleSpinComplete })
@@ -913,7 +790,7 @@ const startGameLocal = () => {
                             winners.map((winner, index) => 
                                 React.createElement('div', { 
                                     key: `${winner.id || winner.telegramId}-${winner.type}`,
-                                    className: `winner-badge ${!winner.isBot ? 'current-user' : ''} winner-${winner.type}`
+                                    className: `winner-badge ${winner.telegramId === currentUser?.telegramId ? 'current-user' : ''} winner-${winner.type}`
                                 },
                                     React.createElement('div', { className: 'winner-avatar' }, winner.avatar),
                                     React.createElement('div', { className: 'winner-info' },
@@ -951,6 +828,7 @@ const Profile = () => {
         gamesWon: 0,
         totalWinnings: 0
     });
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         loadUserData();
@@ -967,7 +845,7 @@ const Profile = () => {
                 totalWinnings: userData.totalWinnings || 0
             });
             
-            if (userData.telegramId && userData.telegramId !== 'demo-user') {
+            if (userData.telegramId) {
                 try {
                     const result = await API.getUserProfile(userData.telegramId);
                     if (result.success) {
@@ -986,46 +864,63 @@ const Profile = () => {
         }
     };
 
-    const updateBalance = async (amount) => {
-        if (!user) return;
-        
+    const handleTelegramPayment = async (amount) => {
+        if (!user || !window.Telegram?.WebApp) {
+            alert('Пополнение доступно только в Telegram');
+            return;
+        }
+
+        setLoading(true);
+
         try {
-            if (user.telegramId && user.telegramId !== 'demo-user') {
-                const result = await API.updateBalance(user.telegramId, amount);
-                if (result.success) {
-                    const updatedUser = { ...user, balance: result.newBalance };
-                    setUser(updatedUser);
-                    localStorage.setItem('user', JSON.stringify(updatedUser));
-                    
-                    window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                        detail: { balance: result.newBalance }
-                    }));
-                    
-                    alert(`Баланс пополнен на ${amount} ⭐!`);
-                    return;
-                }
+            // Создаем инвойс
+            const invoiceResult = await API.createInvoice(user.telegramId, amount);
+            
+            if (invoiceResult.success) {
+                // В реальном приложении здесь будет вызов Telegram Payments
+                // Для демо просто эмулируем успешный платеж
+                setTimeout(async () => {
+                    try {
+                        // Эмуляция успешного платежа
+                        const paymentResult = await API.confirmPayment({
+                            telegram_payment_charge_id: 'demo_' + Date.now(),
+                            provider_payment_charge_id: 'demo_provider_' + Date.now(),
+                            payload: JSON.stringify({
+                                paymentId: invoiceResult.payment.id,
+                                telegramId: user.telegramId,
+                                amount: amount
+                            })
+                        });
+
+                        if (paymentResult.success) {
+                            alert(`✅ Баланс пополнен на ${amount} ⭐`);
+                            loadUserData(); // Перезагружаем данные пользователя
+                            
+                            // Обновляем баланс в хедере
+                            window.dispatchEvent(new CustomEvent('balanceUpdated', {
+                                detail: { balance: paymentResult.newBalance }
+                            }));
+                        }
+                    } catch (error) {
+                        console.error('Payment confirmation error:', error);
+                        alert('❌ Ошибка при подтверждении платежа');
+                    } finally {
+                        setLoading(false);
+                    }
+                }, 2000);
             }
         } catch (error) {
-            console.log('Using local balance update:', error.message);
+            console.error('Payment error:', error);
+            alert('❌ Ошибка при создании платежа');
+            setLoading(false);
         }
-        
-        const newBalance = user.balance + amount;
-        const updatedUser = { ...user, balance: newBalance };
-        setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        
-        window.dispatchEvent(new CustomEvent('balanceUpdated', {
-            detail: { balance: newBalance }
-        }));
-        
-        alert(`Баланс пополнен на ${amount} ⭐!`);
     };
 
     return React.createElement('div', { className: 'profile' },
         React.createElement('div', { className: 'profile-header' },
             React.createElement('h1', null, '👤 Ваш профиль'),
             user && React.createElement('p', { style: { marginTop: '0.5rem', opacity: 0.8 } }, 
-                `ID: ${user.telegramId}${user.telegramId === 'demo-user' ? ' (демо режим)' : ''}`
+                `ID: ${user.telegramId}`
             )
         ),
         
@@ -1066,24 +961,26 @@ const Profile = () => {
         ),
 
         React.createElement('div', { className: 'profile-actions' },
-            React.createElement('h2', null, 'Действия'),
+            React.createElement('h2', null, '💫 Пополнение баланса'),
+            React.createElement('p', { style: { textAlign: 'center', marginBottom: '1rem', opacity: 0.8 } },
+                'Пополните баланс Telegram Stars для участия в играх'
+            ),
             React.createElement('div', { className: 'action-buttons' },
                 React.createElement('button', { 
                     className: 'control-button primary',
-                    onClick: () => updateBalance(100)
-                }, 'Пополнить баланс (+100 ⭐)'),
+                    onClick: () => handleTelegramPayment(10),
+                    disabled: loading
+                }, loading ? 'Обработка...' : 'Пополнить 10 ⭐'),
                 React.createElement('button', { 
-                    className: 'control-button secondary',
-                    onClick: () => {
-                        alert('Функция вывода средств в разработке');
-                    }
-                }, 'Вывести звезды'),
+                    className: 'control-button primary',
+                    onClick: () => handleTelegramPayment(50),
+                    disabled: loading
+                }, loading ? 'Обработка...' : 'Пополнить 50 ⭐'),
                 React.createElement('button', { 
-                    className: 'control-button',
-                    onClick: () => {
-                        alert('История игр в разработке');
-                    }
-                }, 'История игр')
+                    className: 'control-button primary',
+                    onClick: () => handleTelegramPayment(100),
+                    disabled: loading
+                }, loading ? 'Обработка...' : 'Пополнить 100 ⭐')
             )
         )
     );
@@ -1103,6 +1000,8 @@ const App = () => {
         if (window.Telegram?.WebApp) {
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
+            window.Telegram.WebApp.setHeaderColor('#2c2c2c');
+            window.Telegram.WebApp.setBackgroundColor('#667eea');
             console.log('Telegram Web App initialized');
         }
 
@@ -1187,5 +1086,3 @@ root.render(
         React.createElement(App)
     )
 );
-
-
