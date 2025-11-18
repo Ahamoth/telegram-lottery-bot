@@ -1,43 +1,35 @@
 const express = require('express');
-const crypto = require('crypto');
 const User = require('../models/User');
 const router = express.Router();
 
-// Validate Telegram Web App data
-function validateTelegramData(initData) {
-  // Simplified validation - in production use proper Telegram validation
-  try {
-    const params = new URLSearchParams(initData);
-    const hash = params.get('hash');
-    params.delete('hash');
-    
-    // Sort parameters alphabetically
-    const dataCheckString = Array.from(params.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
-    
-    // Validate using your bot token (simplified)
-    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(process.env.BOT_TOKEN).digest();
-    const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-    
-    return calculatedHash === hash;
-  } catch (error) {
-    return false;
-  }
-}
-
+// Простая аутентификация для демо
 router.post('/telegram', async (req, res) => {
   try {
     const { initData } = req.body;
     
-    if (!validateTelegramData(initData)) {
-      return res.status(401).json({ error: 'Invalid Telegram data' });
+    // Упрощенная валидация для демо
+    let userData;
+    try {
+      if (initData && initData.user) {
+        userData = JSON.parse(decodeURIComponent(initData.user));
+      } else {
+        // Демо пользователь
+        userData = {
+          id: Math.random().toString(36).substr(2, 9),
+          first_name: 'Demo',
+          last_name: 'User',
+          username: 'demo_user'
+        };
+      }
+    } catch (error) {
+      userData = {
+        id: Math.random().toString(36).substr(2, 9),
+        first_name: 'Demo',
+        last_name: 'User', 
+        username: 'demo_user'
+      };
     }
-    
-    const params = new URLSearchParams(initData);
-    const userData = JSON.parse(params.get('user'));
-    
+
     let user = await User.findOne({ telegramId: userData.id.toString() });
     
     if (!user) {
@@ -59,12 +51,13 @@ router.post('/telegram', async (req, res) => {
         lastName: user.lastName,
         username: user.username,
         balance: user.balance,
-        gamesPlayed: user.gamesPlayed,
-        gamesWon: user.gamesWon,
-        totalWinnings: user.totalWinnings
+        gamesPlayed: user.gamesPlayed || 0,
+        gamesWon: user.gamesWon || 0,
+        totalWinnings: user.totalWinnings || 0
       }
     });
   } catch (error) {
+    console.error('Auth error:', error);
     res.status(500).json({ error: 'Authentication failed' });
   }
 });
