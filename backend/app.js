@@ -6,7 +6,7 @@ const path = require('path');
 
 const app = express();
 
-// CORS настройка для фронтенда
+// CORS настройка
 const corsOptions = {
   origin: [
     'https://telegram-lottery-bot.netlify.app',
@@ -24,7 +24,7 @@ app.use(express.json());
 
 // PostgreSQL connection
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://telegramlottery_user:3WYlxQ5jwHMCEUYQIF2r6S3g0sHhFFL3@dpg-d4eahs6mcj7s73cj3b8g-a/telegramlottery',
+  connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
@@ -39,7 +39,7 @@ const initDB = async () => {
         first_name VARCHAR(255),
         last_name VARCHAR(255),
         username VARCHAR(255),
-        balance INTEGER DEFAULT 1000,
+        balance INTEGER DEFAULT 0, -- Начинаем с 0 звезд
         games_played INTEGER DEFAULT 0,
         games_won INTEGER DEFAULT 0,
         total_winnings INTEGER DEFAULT 0,
@@ -63,7 +63,7 @@ const initDB = async () => {
       )
     `);
 
-    // Создаем таблицу игроков (обновлена для аватаров)
+    // Создаем таблицу игроков
     await pool.query(`
       CREATE TABLE IF NOT EXISTS game_players (
         id SERIAL PRIMARY KEY,
@@ -76,53 +76,7 @@ const initDB = async () => {
         UNIQUE(game_id, player_number)
       )
     `);
-// Проверка и создание недостающих столбцов
-const checkAndFixTables = async () => {
-  try {
-    // Проверяем и добавляем столбец avatar в users если его нет
-    await pool.query(`
-      DO $$ 
-      BEGIN 
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                         WHERE table_name = 'users' AND column_name = 'avatar') THEN
-              ALTER TABLE users ADD COLUMN avatar VARCHAR(50) DEFAULT '👤';
-              RAISE NOTICE 'Added avatar column to users table';
-          END IF;
-      END $$;
-    `);
 
-    // Проверяем и добавляем столбец avatar в game_players если его нет
-    await pool.query(`
-      DO $$ 
-      BEGIN 
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                         WHERE table_name = 'game_players' AND column_name = 'avatar') THEN
-              ALTER TABLE game_players ADD COLUMN avatar VARCHAR(50) DEFAULT '👤';
-              RAISE NOTICE 'Added avatar column to game_players table';
-          END IF;
-      END $$;
-    `);
-
-    console.log('✅ Table structure verified and fixed if needed');
-  } catch (error) {
-    console.error('❌ Error checking/fixing tables:', error);
-  }
-};
-
-    const initDB = async () => {
-  try {
-    // Создаем таблицы...
-    await pool.query(`CREATE TABLE IF NOT EXISTS users (...)`);
-    // ... остальные таблицы
-    
-    // Проверяем и исправляем структуру таблиц
-    await checkAndFixTables();
-    
-    console.log('✅ PostgreSQL database initialized successfully');
-  } catch (error) {
-    console.error('❌ Database initialization error:', error);
-  }
-};
     // Создаем таблицу победителей
     await pool.query(`
       CREATE TABLE IF NOT EXISTS winners (
@@ -134,6 +88,21 @@ const checkAndFixTables = async () => {
         player_number INTEGER,
         avatar VARCHAR(50),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Создаем таблицу транзакций для пополнений
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id SERIAL PRIMARY KEY,
+        telegram_id VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        amount INTEGER NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        provider_payment_charge_id VARCHAR(255),
+        telegram_payment_charge_id VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -151,11 +120,12 @@ app.get('/health', async (req, res) => {
       status: 'OK', 
       message: 'Server is running',
       database: 'PostgreSQL connected',
+      mode: 'PRODUCTION',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    res.status(200).json({ 
-      status: 'OK', 
+    res.status(500).json({ 
+      status: 'ERROR', 
       message: 'Server is running',
       database: 'PostgreSQL disconnected',
       timestamp: new Date().toISOString()
@@ -167,19 +137,11 @@ app.get('/health', async (req, res) => {
 app.use('/api/auth', require('./routes/auth')(pool));
 app.use('/api/game', require('./routes/game')(pool));
 app.use('/api/user', require('./routes/user')(pool));
+app.use('/api/payment', require('./routes/payment')(pool));
 
 // Serve frontend
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
-
-// Demo endpoint
-app.get('/demo', (req, res) => {
-  res.json({
-    message: 'Server is running with PostgreSQL!',
-    database: 'PostgreSQL',
-    timestamp: new Date().toISOString()
-  });
 });
 
 // Start bot
@@ -188,10 +150,10 @@ if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
     const bot = require('./bot/bot');
     console.log('🤖 Telegram bot started');
   } catch (error) {
-    console.log('⚠️  Bot not started:', error.message);
+    console.log('❌ Bot failed to start:', error.message);
   }
 } else {
-  console.log('🤖 Bot token not provided, running in API-only mode');
+  console.log('❌ Bot token not provided');
 }
 
 // Error handling
@@ -209,11 +171,9 @@ const PORT = process.env.PORT || 10000;
 initDB().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'production'}`);
     console.log(`🗄️ Database: PostgreSQL`);
+    console.log(`💰 Mode: REAL MONEY (Telegram Stars)`);
     console.log(`🔗 Health: https://telegram-lottery-bot-e75s.onrender.com/health`);
-    console.log(`🎯 Frontend: https://telegram-lottery-bot.netlify.app`);
   });
 });
-
-
