@@ -1,7 +1,49 @@
 const express = require('express');
+const crypto = require('crypto');
 
 module.exports = (pool) => {
   const router = express.Router();
+
+  // Validate Telegram Web App data
+  const validateTelegramData = (initData) => {
+    try {
+      const params = new URLSearchParams(initData);
+      const hash = params.get('hash');
+      const authDate = params.get('auth_date');
+      
+      if (!hash || !authDate) {
+        return false;
+      }
+
+      // Check if auth date is not too old (1 hour)
+      const currentTime = Math.floor(Date.now() / 1000);
+      if (currentTime - parseInt(authDate) > 3600) {
+        return false;
+      }
+
+      // Remove hash and sort parameters
+      params.delete('hash');
+      const dataCheckString = Array.from(params.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+
+      // Create secret key from bot token
+      const secretKey = crypto.createHmac('sha256', 'WebAppData')
+        .update(process.env.BOT_TOKEN)
+        .digest();
+      
+      // Calculate hash
+      const calculatedHash = crypto.createHmac('sha256', secretKey)
+        .update(dataCheckString)
+        .digest('hex');
+
+      return calculatedHash === hash;
+    } catch (error) {
+      console.error('Telegram validation error:', error);
+      return false;
+    }
+  };
 
   // Генерация аватара на основе данных пользователя
   const generateUserAvatar = (userData) => {
@@ -45,7 +87,7 @@ module.exports = (pool) => {
         const avatar = generateUserAvatar(userData);
         console.log('Creating new user with avatar:', avatar);
 
-        // Создаем нового пользователя
+        // Создаем нового пользователя с 0 балансом
         const newUserResult = await client.query(
           `INSERT INTO users 
            (telegram_id, first_name, last_name, username, balance, avatar) 
@@ -56,7 +98,7 @@ module.exports = (pool) => {
             userData.firstName || '',
             userData.lastName || '',
             userData.username || '',
-            1000,
+            0, // Начинаем с 0 звезд
             avatar
           ]
         );
@@ -77,35 +119,6 @@ module.exports = (pool) => {
     }
   };
 
-  // Parse Telegram initData safely
-  const parseTelegramData = (initData) => {
-    if (!initData) return null;
-    
-    try {
-      const params = new URLSearchParams(initData);
-      const userParam = params.get('user');
-      
-      if (userParam) {
-        return JSON.parse(decodeURIComponent(userParam));
-      }
-    } catch (error) {
-      console.log('Failed to parse Telegram initData:', error.message);
-    }
-    
-    return null;
-  };
-
-  // Create demo user data
-  const createDemoUser = () => {
-    const demoId = 'demo-' + Math.random().toString(36).substr(2, 9);
-    return {
-      id: demoId,
-      first_name: 'Demo',
-      last_name: 'User',
-      username: 'demo_user_' + Math.random().toString(36).substr(2, 5)
-    };
-  };
-
   router.post('/telegram', async (req, res) => {
     console.log('🔐 Auth request received');
     
@@ -113,40 +126,55 @@ module.exports = (pool) => {
       const { initData } = req.body;
       
       if (!initData) {
-        console.log('No initData provided, using demo mode');
+        return res.status(401).json({ 
+          success: false,
+          error: 'Telegram authentication required' 
+        });
       }
 
-      let userData = parseTelegramData(initData);
+      // Validate Telegram data
+      if (!validateTelegramData(initData)) {
+        return res.status(401).json({ 
+          success: false,
+          error: 'Invalid Telegram authentication' 
+        });
+      }
+
+      // Parse user data
+      const params = new URLSearchParams(initData);
+      const userParam = params.get('user');
       
-      // Если не удалось распарсить Telegram данные, используем демо пользователя
-      if (!userData) {
-        userData = createDemoUser();
-        console.log('Using demo user:', userData.id);
+      if (!userParam) {
+        return res.status(401).json({ 
+          success: false,
+          error: 'User data not found' 
+        });
       }
 
-      console.log('Processing user:', userData);
+      const userData = JSON.parse(decodeURIComponent(userParam));
+      console.log('Processing Telegram user:', userData.id);
 
       const user = await findOrCreateUser({
         telegramId: userData.id.toString(),
-        firstName: userData.first_name || 'User',
-        lastName: userData.last_name || '',
-        username: userData.username || ''
+        firstName: userData.first_name,
+        lastName: userData.last_name,
+        username: userData.username
       });
 
       const response = {
         success: true,
         user: {
           telegramId: user.telegram_id,
-          firstName: user.first_name || 'User',
-          lastName: user.last_name || '',
-          username: user.username || '',
-          balance: user.balance || 1000,
-          gamesPlayed: user.games_played || 0,
-          gamesWon: user.games_won || 0,
-          totalWinnings: user.total_winnings || 0,
-          avatar: user.avatar || '👤'
+          firstName: user.first_name,
+          lastName: user.last_name,
+          username: user.username,
+          balance: user.balance,
+          gamesPlayed: user.games_played,
+          gamesWon: user.games_won,
+          totalWinnings: user.total_winnings,
+          avatar: user.avatar
         },
-        mode: userData.id.toString().startsWith('demo-') ? 'demo' : 'telegram'
+        mode: 'telegram'
       };
 
       console.log('Auth successful for user:', user.telegram_id);
@@ -154,34 +182,11 @@ module.exports = (pool) => {
 
     } catch (error) {
       console.error('❌ Auth error:', error);
-      
-      // Fallback response if everything fails
-      const fallbackUser = createDemoUser();
-      res.json({
-        success: true,
-        user: {
-          telegramId: fallbackUser.id,
-          firstName: fallbackUser.first_name,
-          lastName: fallbackUser.last_name,
-          username: fallbackUser.username,
-          balance: 1000,
-          gamesPlayed: 0,
-          gamesWon: 0,
-          totalWinnings: 0,
-          avatar: '🤖'
-        },
-        mode: 'fallback'
+      res.status(500).json({ 
+        success: false,
+        error: 'Authentication failed' 
       });
     }
-  });
-
-  // Simple health check for auth route
-  router.get('/health', (req, res) => {
-    res.json({ 
-      status: 'OK', 
-      message: 'Auth route is working',
-      timestamp: new Date().toISOString()
-    });
   });
 
   return router;
