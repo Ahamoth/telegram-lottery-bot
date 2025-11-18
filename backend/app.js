@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
+const { Pool } = require('pg');
 const path = require('path');
 
 const app = express();
@@ -9,10 +9,11 @@ const app = express();
 // CORS настройка
 const corsOptions = {
   origin: [
-    'https://telegram-lottery-bot.netlify.app',
+    'https://your-lottery-app.netlify.app',
     'https://web.telegram.org',
     'http://localhost:3000',
-    'http://localhost:3001'
+    'http://localhost:3001',
+    'https://telegram-lottery-bot-e75s.onrender.com'
   ],
   credentials: true,
   optionsSuccessStatus: 200
@@ -21,52 +22,126 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// MongoDB connection (прямо в app.js)
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/telegram-lottery';
-
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ Connected to MongoDB');
-})
-.catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
+// PostgreSQL connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://telegramlottery_user:3WYlxQ5jwHMCEUYQIF2r6S3g0sHhFFL3@dpg-d4eahs6mcj7s73cj3b8g-a/telegramlottery',
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Basic health check
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
-    message: 'Server is running',
-    timestamp: new Date().toISOString()
-  });
+// Инициализация базы данных
+const initDB = async () => {
+  try {
+    // Создаем таблицу пользователей
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        telegram_id VARCHAR(255) UNIQUE NOT NULL,
+        first_name VARCHAR(255),
+        last_name VARCHAR(255),
+        username VARCHAR(255),
+        balance INTEGER DEFAULT 1000,
+        games_played INTEGER DEFAULT 0,
+        games_won INTEGER DEFAULT 0,
+        total_winnings INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Создаем таблицу игр
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS games (
+        id SERIAL PRIMARY KEY,
+        status VARCHAR(50) DEFAULT 'waiting',
+        bank_amount INTEGER DEFAULT 0,
+        winning_center INTEGER,
+        winning_left INTEGER,
+        winning_right INTEGER,
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Создаем таблицу игроков
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS game_players (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER REFERENCES games(id),
+        telegram_id VARCHAR(255),
+        player_number INTEGER,
+        player_name VARCHAR(255),
+        avatar VARCHAR(50),
+        is_bot BOOLEAN DEFAULT false,
+        UNIQUE(game_id, player_number)
+      )
+    `);
+
+    // Создаем таблицу победителей
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS winners (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER REFERENCES games(id),
+        telegram_id VARCHAR(255),
+        prize INTEGER,
+        prize_type VARCHAR(50),
+        player_number INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    console.log('✅ PostgreSQL database initialized successfully');
+  } catch (error) {
+    console.error('❌ Database initialization error:', error);
+  }
+};
+
+// Health check
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.status(200).json({ 
+      status: 'OK', 
+      message: 'Server is running',
+      database: 'PostgreSQL connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(200).json({ 
+      status: 'OK', 
+      message: 'Server is running',
+      database: 'PostgreSQL disconnected',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // API Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/game', require('./routes/game'));
-app.use('/api/user', require('./routes/user'));
+app.use('/api/auth', require('./routes/auth')(pool));
+app.use('/api/game', require('./routes/game')(pool));
+app.use('/api/user', require('./routes/user')(pool));
 
 // Serve frontend
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// Telegram auth endpoint
-app.get('/tg-auth', (req, res) => {
-  res.json({ 
-    success: true, 
-    message: 'Telegram auth endpoint',
+// Demo endpoint
+app.get('/demo', (req, res) => {
+  res.json({
+    message: 'Server is running with PostgreSQL!',
+    database: 'PostgreSQL',
     timestamp: new Date().toISOString()
   });
 });
 
-// Start bot in production
+// Start bot
 if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
-  const bot = require('./bot/bot');
-  console.log('🤖 Telegram bot started');
+  try {
+    const bot = require('./bot/bot');
+    console.log('🤖 Telegram bot started');
+  } catch (error) {
+    console.log('⚠️  Bot not started:', error.message);
+  }
 }
 
 // Error handling
@@ -78,18 +153,14 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ 
-    error: 'Route not found',
-    path: req.originalUrl
+const PORT = process.env.PORT || 10000;
+
+// Инициализация и запуск
+initDB().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🗄️ Database: PostgreSQL`);
+    console.log(`🔗 Health: https://telegram-lottery-bot-e75s.onrender.com/health`);
   });
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
-  console.log(`🗄️ MongoDB: ${MONGODB_URI.includes('localhost') ? 'Local' : 'Cloud'}`);
 });
