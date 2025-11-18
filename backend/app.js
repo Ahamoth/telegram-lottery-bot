@@ -108,6 +108,21 @@ const checkAndFixTables = async () => {
     console.error('❌ Error checking/fixing tables:', error);
   }
 };
+
+    const initDB = async () => {
+  try {
+    // Создаем таблицы...
+    await pool.query(`CREATE TABLE IF NOT EXISTS users (...)`);
+    // ... остальные таблицы
+    
+    // Проверяем и исправляем структуру таблиц
+    await checkAndFixTables();
+    
+    console.log('✅ PostgreSQL database initialized successfully');
+  } catch (error) {
+    console.error('❌ Database initialization error:', error);
+  }
+};
     // Создаем таблицу победителей
     await pool.query(`
       CREATE TABLE IF NOT EXISTS winners (
@@ -200,4 +215,5 @@ initDB().then(() => {
     console.log(`🎯 Frontend: https://telegram-lottery-bot.netlify.app`);
   });
 });
+
 
