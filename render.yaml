@@ -1,1 +1,26 @@
+services:
+  - type: web
+    name: telegram-lottery-api
+    env: node
+    plan: free
+    region: frankfurt
+    rootDirectory: backend    # ← Ключевое!
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BOT_TOKEN
+        sync: false
+      - key: MONGODB_URI
+        fromDatabase:
+          name: telegram-lottery-db
+          property: connectionString
+      - key: WEB_APP_URL
+        value: https://telegram-lottery-bot.netlify.app
 
+databases:
+  - name: telegram-lottery-db
+    databaseName: telegramlottery
+    plan: free
+    region: frankfurt
