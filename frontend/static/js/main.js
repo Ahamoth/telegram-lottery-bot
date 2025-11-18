@@ -870,7 +870,10 @@ const Profile = () => {
         }
     };
 
-   const handleTelegramPayment = async (amount) => {
+   // Вставьте эту функцию в ваш существующий main.js файл
+// ЗАМЕНИТЕ старую функцию handleTelegramPayment
+
+const handleTelegramPayment = async (amount) => {
   if (!user || !window.Telegram?.WebApp) {
     alert('Пополнение доступно только в Telegram');
     return;
@@ -879,81 +882,72 @@ const Profile = () => {
   setLoading(true);
 
   try {
-    // Создаем инвойс
+    // Создаем инвойс для Telegram Stars
     const invoiceResult = await API.createInvoice(user.telegramId, amount);
     
     if (invoiceResult.success) {
-      // Демо-режим: сразу подтверждаем платеж
-      if (invoiceResult.demoMode) {
-        const paymentResult = await API.confirmPayment({
-          telegramId: user.telegramId,
-          amount: amount
-        });
+      
+      // Для Telegram Stars
+      const paymentData = {
+        title: `Purchase ${amount} Stars`,
+        description: `Get ${amount} Telegram Stars for the game`,
+        payload: invoiceResult.payment.payload,
+        provider_token: invoiceResult.payment.provider_token || 'TEST',
+        currency: 'XTR', // Важно для Stars
+        prices: invoiceResult.payment.prices,
+        need_name: false,
+        need_phone_number: false, 
+        need_email: false,
+        need_shipping_address: false
+      };
 
-        if (paymentResult.success) {
-          alert(`✅ Баланс пополнен на ${amount} ⭐`);
-          loadUserData(); // Перезагружаем данные пользователя
-          
-          // Обновляем баланс в хедере
-          window.dispatchEvent(new CustomEvent('balanceUpdated', {
-            detail: { balance: paymentResult.newBalance }
-          }));
+      console.log('Opening Telegram Stars payment:', paymentData);
+
+      // Открываем платежную форму Stars
+      window.Telegram.WebApp.openInvoice(paymentData, (status) => {
+        console.log('Telegram Stars payment status:', status);
+        
+        if (status === 'paid') {
+          // Платеж успешен - подтверждаем
+          API.confirmPayment({
+            telegram_payment_charge_id: 'stars_payment_' + Date.now(),
+            provider_payment_charge_id: 'telegram_stars',
+            payload: invoiceResult.payment.payload
+          }).then(result => {
+            if (result.success) {
+              alert(`✅ Successfully purchased ${amount} Stars!`);
+              loadUserData(); // Перезагружаем данные пользователя
+              
+              // Обновляем баланс в хедере
+              window.dispatchEvent(new CustomEvent('balanceUpdated', {
+                detail: { balance: result.newBalance }
+              }));
+            } else {
+              alert('❌ Error confirming payment');
+            }
+          }).catch(error => {
+            console.error('Payment confirmation error:', error);
+            alert('❌ Payment confirmation failed');
+          });
+        } else if (status === 'failed') {
+          alert('❌ Payment failed');
+        } else if (status === 'cancelled') {
+          alert('⚠️ Payment cancelled');
         } else {
-          alert('❌ Ошибка при пополнении баланса');
+          alert('❌ Unknown payment status: ' + status);
         }
-      } else {
-        // Реальный платеж через Telegram Payments
-        const paymentData = {
-          title: 'Пополнение баланса',
-          description: `Пополнение на ${amount} звезд`,
-          payload: invoiceResult.payment.payload,
-          provider_token: '284685063:TEST:YzcyZDIwM2U0ZGYz', // Нужно получить у провайдера
-          currency: 'XTR',
-          prices: JSON.stringify([{
-            label: `Пополнение баланса`,
-            amount: amount * 100 // В копейках
-          }]),
-          need_name: false,
-          need_phone_number: false,
-          need_email: false,
-          need_shipping_address: false
-        };
-
-        // Открываем платежную форму Telegram
-        window.Telegram.WebApp.openInvoice(paymentData, (status) => {
-          if (status === 'paid') {
-            // Платеж успешен
-            API.confirmPayment({
-              telegram_payment_charge_id: 'from_telegram',
-              provider_payment_charge_id: 'from_provider', 
-              payload: invoiceResult.payment.payload
-            }).then(result => {
-              if (result.success) {
-                alert(`✅ Баланс пополнен на ${amount} ⭐`);
-                loadUserData();
-                window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                  detail: { balance: result.newBalance }
-                }));
-              }
-            });
-          } else {
-            alert('❌ Платеж не был завершен');
-          }
-        });
-      }
+      });
+      
+    } else {
+      alert('❌ Failed to create payment invoice');
     }
   } catch (error) {
-    console.error('Payment error:', error);
+    console.error('Stars payment error:', error);
     
-    // Демо-режим: пробуем демо-платеж если основной не сработал
+    // Fallback: пробуем демо-платеж если основной не сработал
     try {
-      const demoResult = await API.request('/payment/demo-payment', {
-        method: 'POST',
-        body: JSON.stringify({
-          telegramId: user.telegramId,
-          amount: amount
-        })
-      });
+      console.log('Trying demo payment as fallback...');
+      const demoResult = await API.demoPayment(user.telegramId, amount);
 
       if (demoResult.success) {
         alert(`✅ Демо-режим: баланс пополнен на ${amount} ⭐`);
@@ -961,12 +955,27 @@ const Profile = () => {
         window.dispatchEvent(new CustomEvent('balanceUpdated', {
           detail: { balance: demoResult.newBalance }
         }));
+      } else {
+        alert('❌ Ошибка при пополнении баланса');
       }
     } catch (demoError) {
-      alert('❌ Ошибка при пополнении баланса');
+      console.error('Demo payment also failed:', demoError);
+      alert('❌ Все методы платежа не сработали');
     }
   } finally {
     setLoading(false);
+  }
+};
+
+// И добавьте этот метод в объект API в main.js:
+const API = {
+  // ... ваши существующие методы ...
+  
+  async demoPayment(telegramId, amount) {
+    return this.request('/payment/demo-payment', {
+      method: 'POST',
+      body: JSON.stringify({ telegramId, amount }),
+    });
   }
 };
 
@@ -1140,6 +1149,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
