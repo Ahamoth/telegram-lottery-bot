@@ -63,15 +63,15 @@ const API = {
   }
 };
 
-// Header Component with MongoDB integration
+// Header Component with Telegram avatar
 const Header = () => {
     const [user, setUser] = useState(null);
     const [balance, setBalance] = useState(1000);
+    const [userAvatar, setUserAvatar] = useState('👤'); // дефолтный аватар
     
     useEffect(() => {
         initializeUser();
         
-        // Listen for balance updates
         const handleBalanceUpdate = (event) => {
             if (event.detail && event.detail.balance) {
                 setBalance(event.detail.balance);
@@ -83,20 +83,29 @@ const Header = () => {
     }, []);
 
     const initializeUser = async () => {
-        // Try to get Telegram Web App data
+        // Получаем данные из Telegram Web App
         if (window.Telegram?.WebApp) {
             try {
                 const initData = window.Telegram.WebApp.initData;
+                const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+                
+                // Генерируем аватар на основе данных пользователя
+                const avatar = generateTelegramAvatar(tgUser);
+                setUserAvatar(avatar);
+                
                 const result = await API.authenticate(initData);
                 
                 if (result.success) {
-                    setUser(result.user);
+                    const userWithAvatar = {
+                        ...result.user,
+                        avatar: avatar
+                    };
+                    setUser(userWithAvatar);
                     setBalance(result.user.balance);
-                    localStorage.setItem('user', JSON.stringify(result.user));
+                    localStorage.setItem('user', JSON.stringify(userWithAvatar));
                     
-                    // Notify other components
                     window.dispatchEvent(new CustomEvent('userAuthenticated', {
-                        detail: { user: result.user }
+                        detail: { user: userWithAvatar }
                     }));
                 }
             } catch (error) {
@@ -108,26 +117,47 @@ const Header = () => {
         }
     };
 
+    const generateTelegramAvatar = (tgUser) => {
+        if (!tgUser) return '👤';
+        
+        // Если есть фото - можно было бы отобразить, но в Mini App нет доступа к фото
+        // Используем эмодзи на основе имени или другие данные
+        const emojiAvatars = ['😊', '😎', '🤠', '👨‍💻', '👩‍💻', '🦊', '🐯', '🐶', '🐱', '🐼'];
+        
+        if (tgUser.username) {
+            // Используем первую букву username для консистентности
+            const firstChar = tgUser.username.charAt(0).toUpperCase();
+            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
+            return emojiAvatars[emojiIndex];
+        } else if (tgUser.first_name) {
+            // Используем первую букву имени
+            const firstChar = tgUser.first_name.charAt(0).toUpperCase();
+            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
+            return emojiAvatars[emojiIndex];
+        }
+        
+        return '👤';
+    };
+
     const loadFallbackUser = () => {
         const savedUser = localStorage.getItem('user');
         if (savedUser) {
             const userData = JSON.parse(savedUser);
             setUser(userData);
             setBalance(userData.balance);
+            setUserAvatar(userData.avatar || '👤');
         } else {
-            // Create demo user for development
             const demoUser = {
                 telegramId: 'demo-user',
                 firstName: 'Demo',
                 lastName: 'User',
                 username: 'demo',
                 balance: 1000,
-                gamesPlayed: 0,
-                gamesWon: 0,
-                totalWinnings: 0
+                avatar: '🤖'
             };
             setUser(demoUser);
             setBalance(demoUser.balance);
+            setUserAvatar(demoUser.avatar);
             localStorage.setItem('user', JSON.stringify(demoUser));
         }
     };
@@ -160,7 +190,10 @@ const Header = () => {
                 )
             )
         ),
-        React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
+        React.createElement('div', { className: 'header-user' },
+            React.createElement('div', { className: 'user-avatar' }, userAvatar),
+            React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
+        )
     );
 };
 
@@ -1076,4 +1109,5 @@ if ('serviceWorker' in navigator) {
                 console.log('SW registration failed: ', registrationError);
             });
     });
+
 }
