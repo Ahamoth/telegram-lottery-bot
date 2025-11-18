@@ -65,7 +65,10 @@ module.exports = (pool) => {
       }
     } catch (error) {
       console.error('Get game error:', error);
-      res.status(500).json({ error: 'Failed to get game state' });
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get game state' 
+      });
     }
   });
 
@@ -80,7 +83,10 @@ module.exports = (pool) => {
       
       if (!telegramId) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Telegram ID is required' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Telegram ID is required' 
+        });
       }
 
       // Находим текущую активную игру
@@ -109,7 +115,10 @@ module.exports = (pool) => {
       
       if (existingPlayerResult.rows.length > 0) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Already in game' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Already in game' 
+        });
       }
       
       // Получаем занятые номера
@@ -123,7 +132,10 @@ module.exports = (pool) => {
       
       if (availableNumbers.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Game is full' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Game is full' 
+        });
       }
       
       const userNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
@@ -136,7 +148,10 @@ module.exports = (pool) => {
       
       if (userResult.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'User not found' });
+        return res.status(404).json({ 
+          success: false,
+          error: 'User not found' 
+        });
       }
       
       const userBalance = userResult.rows[0].balance;
@@ -144,7 +159,10 @@ module.exports = (pool) => {
       
       if (userBalance < 10) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Insufficient balance' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Insufficient balance' 
+        });
       }
       
       // Используем аватар пользователя из базы или переданный аватар
@@ -216,8 +234,11 @@ module.exports = (pool) => {
       
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Join game error:', error);
-      res.status(500).json({ error: 'Failed to join game' });
+      console.error('❌ Join game error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to join game' 
+      });
     } finally {
       client.release();
     }
@@ -225,48 +246,99 @@ module.exports = (pool) => {
 
   // Start game
   router.post('/start', async (req, res) => {
+    const client = await pool.connect();
+    
     try {
-      const gameResult = await pool.query(
-        'SELECT * FROM games WHERE status = $1 ORDER BY created_at DESC LIMIT 1',
-        ['waiting']
+      await client.query('BEGIN');
+
+      // Находим текущую игру в статусе waiting
+      const gameResult = await client.query(
+        `SELECT g.*, 
+         COUNT(gp.id) as players_count
+         FROM games g
+         LEFT JOIN game_players gp ON g.id = gp.game_id
+         WHERE g.status = 'waiting'
+         GROUP BY g.id
+         ORDER BY g.created_at DESC 
+         LIMIT 1 FOR UPDATE`
       );
-      
+
       if (gameResult.rows.length === 0) {
-        return res.status(404).json({ error: 'No waiting game found' });
+        await client.query('ROLLBACK');
+        return res.status(404).json({ 
+          success: false,
+          error: 'No waiting game found' 
+        });
       }
-      
+
       const game = gameResult.rows[0];
-      
+      const playersCount = parseInt(game.players_count);
+
+      console.log(`🎮 Starting game ${game.id} with ${playersCount} players`);
+
       // Проверяем количество игроков
-      const playersCountResult = await pool.query(
-        'SELECT COUNT(*) as count FROM game_players WHERE game_id = $1',
-        [game.id]
-      );
-      
-      const playersCount = parseInt(playersCountResult.rows[0].count);
       if (playersCount < 2) {
-        return res.status(400).json({ error: 'Not enough players (minimum 2)' });
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          success: false,
+          error: 'Not enough players to start the game',
+          details: `Need at least 2 players, currently have ${playersCount}`,
+          playersCount: playersCount
+        });
       }
-      
+
       // Обновляем статус игры
-      await pool.query(
+      await client.query(
         'UPDATE games SET status = $1, start_time = $2 WHERE id = $3',
         ['active', new Date(), game.id]
       );
-      
+
+      // Получаем обновленную информацию об игре
+      const updatedGameResult = await client.query(
+        `SELECT g.*, 
+         json_agg(
+           json_build_object(
+             'telegramId', gp.telegram_id,
+             'number', gp.player_number,
+             'name', gp.player_name,
+             'avatar', COALESCE(gp.avatar, '👤'),
+             'isBot', gp.is_bot
+           )
+         ) as players
+         FROM games g
+         LEFT JOIN game_players gp ON g.id = gp.game_id
+         WHERE g.id = $1
+         GROUP BY g.id`,
+        [game.id]
+      );
+
+      await client.query('COMMIT');
+
+      const updatedGame = updatedGameResult.rows[0];
+
       res.json({
         success: true,
         game: {
-          id: game.id,
-          status: 'active',
-          bankAmount: game.bank_amount,
-          playersCount: playersCount
-        }
+          id: updatedGame.id,
+          status: updatedGame.status,
+          bankAmount: updatedGame.bank_amount,
+          players: updatedGame.players || [],
+          playersCount: playersCount,
+          startTime: updatedGame.start_time
+        },
+        message: `Game started successfully with ${playersCount} players`
       });
-      
+
     } catch (error) {
-      console.error('Start game error:', error);
-      res.status(500).json({ error: 'Failed to start game' });
+      await client.query('ROLLBACK');
+      console.error('❌ Start game error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to start game',
+        details: error.message 
+      });
+    } finally {
+      client.release();
     }
   });
 
@@ -281,7 +353,10 @@ module.exports = (pool) => {
       
       if (!gameId || !winningNumbers) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Game ID and winning numbers are required' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Game ID and winning numbers are required' 
+        });
       }
       
       // Проверяем игру
@@ -292,14 +367,20 @@ module.exports = (pool) => {
       
       if (gameResult.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Game not found' });
+        return res.status(404).json({ 
+          success: false,
+          error: 'Game not found' 
+        });
       }
       
       const game = gameResult.rows[0];
       
       if (game.status !== 'active') {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Game is not active' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Game is not active' 
+        });
       }
       
       // Получаем всех игроков с аватарами
@@ -466,8 +547,11 @@ module.exports = (pool) => {
       
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Finish game error:', error);
-      res.status(500).json({ error: 'Failed to finish game' });
+      console.error('❌ Finish game error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to finish game' 
+      });
     } finally {
       client.release();
     }
@@ -484,7 +568,10 @@ module.exports = (pool) => {
       
       if (!telegramId) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Telegram ID is required' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Telegram ID is required' 
+        });
       }
       
       // Находим текущую игру
@@ -495,7 +582,10 @@ module.exports = (pool) => {
       
       if (gameResult.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'No active game found' });
+        return res.status(404).json({ 
+          success: false,
+          error: 'No active game found' 
+        });
       }
       
       const game = gameResult.rows[0];
@@ -508,7 +598,10 @@ module.exports = (pool) => {
       
       if (playerResult.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Player not found in game' });
+        return res.status(404).json({ 
+          success: false,
+          error: 'Player not found in game' 
+        });
       }
       
       // Удаляем игрока из игры
@@ -553,10 +646,315 @@ module.exports = (pool) => {
       
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Leave game error:', error);
-      res.status(500).json({ error: 'Failed to leave game' });
+      console.error('❌ Leave game error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to leave game' 
+      });
     } finally {
       client.release();
+    }
+  });
+
+  // Get game status and players count
+  router.get('/status/:gameId', async (req, res) => {
+    try {
+      const { gameId } = req.params;
+
+      const gameResult = await pool.query(
+        `SELECT 
+          g.*,
+          COUNT(gp.id) as players_count,
+          COUNT(CASE WHEN NOT gp.is_bot THEN 1 END) as real_players_count,
+          COUNT(CASE WHEN gp.is_bot THEN 1 END) as bots_count
+         FROM games g
+         LEFT JOIN game_players gp ON g.id = gp.game_id
+         WHERE g.id = $1
+         GROUP BY g.id`,
+        [gameId]
+      );
+
+      if (gameResult.rows.length === 0) {
+        return res.status(404).json({ 
+          success: false,
+          error: 'Game not found' 
+        });
+      }
+
+      const game = gameResult.rows[0];
+
+      res.json({
+        success: true,
+        game: {
+          id: game.id,
+          status: game.status,
+          bankAmount: game.bank_amount,
+          playersCount: parseInt(game.players_count),
+          realPlayersCount: parseInt(game.real_players_count),
+          botsCount: parseInt(game.bots_count)
+        }
+      });
+
+    } catch (error) {
+      console.error('Get game status error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get game status' 
+      });
+    }
+  });
+
+  // Auto-fill game with bots if needed
+  router.post('/auto-fill', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      const { gameId, targetPlayers = 10 } = req.body;
+
+      // Получаем текущую игру
+      const gameResult = await client.query(
+        'SELECT * FROM games WHERE id = $1 FOR UPDATE',
+        [gameId]
+      );
+
+      if (gameResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ 
+          success: false,
+          error: 'Game not found' 
+        });
+      }
+
+      const game = gameResult.rows[0];
+
+      // Получаем текущих игроков
+      const playersResult = await client.query(
+        'SELECT player_number FROM game_players WHERE game_id = $1',
+        [gameId]
+      );
+
+      const usedNumbers = playersResult.rows.map(row => row.player_number);
+      const availableNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(n => !usedNumbers.includes(n));
+      
+      const currentPlayers = playersResult.rows.length;
+      const botsToAdd = Math.min(targetPlayers - currentPlayers, availableNumbers.length);
+
+      console.log(`🤖 Adding ${botsToAdd} bots to game ${gameId}`);
+
+      const botAvatars = ['🤖', '👾', '🤡', '💀', '👻', '🐵', '🐸', '🦁', '🐲', '🦄'];
+      const botNames = ['Бот_Алекс', 'Бот_Макс', 'Бот_Даня', 'Бот_Саша', 'Бот_Костя', 'Бот_Ник', 'Бот_Майк', 'Бот_Джон'];
+
+      let addedBots = 0;
+
+      for (let i = 0; i < botsToAdd && availableNumbers.length > 0; i++) {
+        const botNumber = availableNumbers.shift();
+        const botAvatar = botAvatars[i % botAvatars.length];
+        const botName = botNames[i % botNames.length];
+
+        await client.query(
+          `INSERT INTO game_players 
+           (game_id, telegram_id, player_number, player_name, avatar, is_bot) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [gameId, `bot-auto-${Date.now()}-${i}`, botNumber, botName, botAvatar, true]
+        );
+
+        addedBots++;
+      }
+
+      // Обновляем банк
+      const newPlayersCount = currentPlayers + addedBots;
+      const newBankAmount = newPlayersCount * 10;
+
+      await client.query(
+        'UPDATE games SET bank_amount = $1 WHERE id = $2',
+        [newBankAmount, gameId]
+      );
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        addedBots: addedBots,
+        newPlayersCount: newPlayersCount,
+        newBankAmount: newBankAmount,
+        message: `Added ${addedBots} bots to the game`
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Auto-fill error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to auto-fill game with bots' 
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Add single bot to game
+  router.post('/add-bot', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      const { gameId } = req.body;
+
+      const gameResult = await client.query(
+        'SELECT * FROM games WHERE id = $1 FOR UPDATE',
+        [gameId]
+      );
+
+      if (gameResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ 
+          success: false,
+          error: 'Game not found' 
+        });
+      }
+
+      const game = gameResult.rows[0];
+
+      if (game.status !== 'waiting') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          success: false,
+          error: 'Can only add bots to waiting games' 
+        });
+      }
+
+      // Получаем занятые номера
+      const usedNumbersResult = await client.query(
+        'SELECT player_number FROM game_players WHERE game_id = $1',
+        [gameId]
+      );
+
+      const usedNumbers = usedNumbersResult.rows.map(row => row.player_number);
+      const availableNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter(n => !usedNumbers.includes(n));
+
+      if (availableNumbers.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          success: false,
+          error: 'Game is full' 
+        });
+      }
+
+      const botNumber = availableNumbers[0];
+      const botAvatars = ['🤖', '👾', '🤡', '💀', '👻', '🐵', '🐸', '🦁', '🐲', '🦄'];
+      const botNames = ['Бот_Алекс', 'Бот_Макс', 'Бот_Даня', 'Бот_Саша', 'Бот_Костя', 'Бот_Ник', 'Бот_Майк', 'Бот_Джон'];
+
+      const randomIndex = Math.floor(Math.random() * botAvatars.length);
+      const botAvatar = botAvatars[randomIndex];
+      const botName = botNames[randomIndex % botNames.length];
+
+      await client.query(
+        `INSERT INTO game_players 
+         (game_id, telegram_id, player_number, player_name, avatar, is_bot) 
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [gameId, `bot-${Date.now()}`, botNumber, botName, botAvatar, true]
+      );
+
+      // Обновляем банк
+      const playersCountResult = await client.query(
+        'SELECT COUNT(*) as count FROM game_players WHERE game_id = $1',
+        [gameId]
+      );
+
+      const bankAmount = parseInt(playersCountResult.rows[0].count) * 10;
+      await client.query(
+        'UPDATE games SET bank_amount = $1 WHERE id = $2',
+        [bankAmount, gameId]
+      );
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        bot: {
+          name: botName,
+          number: botNumber,
+          avatar: botAvatar
+        },
+        bankAmount: bankAmount,
+        playersCount: parseInt(playersCountResult.rows[0].count)
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Add bot error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to add bot' 
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Get game history for user
+  router.get('/history/:telegramId', async (req, res) => {
+    try {
+      const { telegramId } = req.params;
+      const { limit = 20 } = req.query;
+
+      const historyResult = await pool.query(
+        `SELECT 
+          g.id,
+          g.status,
+          g.bank_amount as "bankAmount",
+          g.winning_center as "winningCenter",
+          g.winning_left as "winningLeft", 
+          g.winning_right as "winningRight",
+          g.created_at as "createdAt",
+          w.prize,
+          w.prize_type as "prizeType",
+          w.player_number as "playerNumber",
+          gp.avatar
+         FROM games g
+         LEFT JOIN winners w ON g.id = w.game_id AND w.telegram_id = $1
+         LEFT JOIN game_players gp ON g.id = gp.game_id AND gp.telegram_id = $1
+         WHERE g.status = 'finished'
+         AND (EXISTS (
+           SELECT 1 FROM game_players gp 
+           WHERE gp.game_id = g.id AND gp.telegram_id = $1
+         ) OR w.telegram_id = $1)
+         ORDER BY g.created_at DESC
+         LIMIT $2`,
+        [telegramId, limit]
+      );
+      
+      const games = historyResult.rows.map(row => ({
+        id: row.id,
+        status: row.status,
+        bankAmount: row.bankAmount,
+        winningNumbers: row.winningCenter ? {
+          center: row.winningCenter,
+          left: row.winningLeft,
+          right: row.winningRight
+        } : null,
+        playerNumber: row.playerNumber,
+        prize: row.prize,
+        prizeType: row.prizeType,
+        avatar: row.avatar,
+        createdAt: row.createdAt
+      }));
+      
+      res.json({
+        success: true,
+        games: games,
+        total: games.length
+      });
+      
+    } catch (error) {
+      console.error('Game history error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get game history' 
+      });
     }
   });
 
