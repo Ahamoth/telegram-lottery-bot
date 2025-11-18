@@ -6,10 +6,10 @@ const path = require('path');
 
 const app = express();
 
-// CORS настройка для Render
+// CORS настройка
 const corsOptions = {
   origin: [
-    'https://telegram-lottery-bot.netlify.app',  // ваш Netlify URL
+    'https://your-lottery-app.netlify.app',
     'https://web.telegram.org',
     'http://localhost:3000',
     'http://localhost:3001'
@@ -21,10 +21,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Serve static files from frontend (для полнофункционального режима)
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// MongoDB connection
+// MongoDB connection (прямо в app.js)
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/telegram-lottery';
 
 mongoose.connect(MONGODB_URI, {
@@ -38,7 +35,7 @@ mongoose.connect(MONGODB_URI, {
   console.error('❌ MongoDB connection error:', error);
 });
 
-// Basic health check route
+// Basic health check
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'OK', 
@@ -52,15 +49,13 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/game', require('./routes/game'));
 app.use('/api/user', require('./routes/user'));
 
-// Serve frontend for root route
+// Serve frontend
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// Telegram Mini App validation endpoint
+// Telegram auth endpoint
 app.get('/tg-auth', (req, res) => {
-  const { initData } = req.query;
-  // Здесь будет валидация данных Telegram
   res.json({ 
     success: true, 
     message: 'Telegram auth endpoint',
@@ -68,13 +63,13 @@ app.get('/tg-auth', (req, res) => {
   });
 });
 
-// Start Telegram bot (только в production)
+// Start bot in production
 if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
   const bot = require('./bot/bot');
   console.log('🤖 Telegram bot started');
 }
 
-// Error handling middleware
+// Error handling
 app.use((err, req, res, next) => {
   console.error('Error:', err.stack);
   res.status(500).json({ 
@@ -96,5 +91,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
-  console.log(`📊 MongoDB: ${MONGODB_URI.includes('localhost') ? 'Local' : 'Cloud'}`);
+  console.log(`🗄️ MongoDB: ${MONGODB_URI.includes('localhost') ? 'Local' : 'Cloud'}`);
 });
