@@ -9,7 +9,7 @@ const app = express();
 // CORS настройка
 const corsOptions = {
   origin: [
-    'https://your-lottery-app.netlify.app',
+    'https://telegram-lottery-bot.netlify.app',
     'https://web.telegram.org',
     'http://localhost:3000',
     'http://localhost:3001'
