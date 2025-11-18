@@ -133,11 +133,11 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// API Routes
-app.use('/api/auth', require('./auth')(pool));
-app.use('/api/game', require('./game')(pool));
-app.use('/api/user', require('./user')(pool));
-app.use('/api/payment', require('./payment')(pool));
+// API Routes - ИСПРАВЛЕННЫЕ ПУТИ
+app.use('/api/auth', require('./routes/auth')(pool));
+app.use('/api/game', require('./routes/game')(pool));
+app.use('/api/user', require('./routes/user')(pool));
+app.use('/api/payment', require('./routes/payment')(pool));
 
 // Serve frontend
 app.get('/', (req, res) => {
@@ -151,7 +151,7 @@ app.get('/', (req, res) => {
 // Start bot
 if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
   try {
-    const bot = require('./bot');
+    const bot = require('./bot/bot');
     console.log('🤖 Telegram bot started');
   } catch (error) {
     console.log('❌ Bot failed to start:', error.message);
