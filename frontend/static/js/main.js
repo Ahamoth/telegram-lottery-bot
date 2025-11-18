@@ -76,7 +76,13 @@ const API = {
     });
   }
 };
-
+async demoPayment(telegramId, amount) {
+    return this.request('/payment/demo-payment', {
+      method: 'POST',
+      body: JSON.stringify({ telegramId, amount }),
+    });
+  }
+};
 // Header Component
 const Header = () => {
     const [user, setUser] = useState(null);
@@ -1134,4 +1140,5 @@ root.render(
         React.createElement(App)
     )
 );
+
 
