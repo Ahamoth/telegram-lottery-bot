@@ -6,10 +6,10 @@ const path = require('path');
 
 const app = express();
 
-// CORS настройка
+// CORS настройка для фронтенда
 const corsOptions = {
   origin: [
-    'https://your-lottery-app.netlify.app',
+    'https://telegram-lottery-bot.netlify.app',
     'https://web.telegram.org',
     'http://localhost:3000',
     'http://localhost:3001',
@@ -43,6 +43,7 @@ const initDB = async () => {
         games_played INTEGER DEFAULT 0,
         games_won INTEGER DEFAULT 0,
         total_winnings INTEGER DEFAULT 0,
+        avatar VARCHAR(50) DEFAULT '👤',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -62,7 +63,7 @@ const initDB = async () => {
       )
     `);
 
-    // Создаем таблицу игроков
+    // Создаем таблицу игроков (обновлена для аватаров)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS game_players (
         id SERIAL PRIMARY KEY,
@@ -70,7 +71,7 @@ const initDB = async () => {
         telegram_id VARCHAR(255),
         player_number INTEGER,
         player_name VARCHAR(255),
-        avatar VARCHAR(50),
+        avatar VARCHAR(50) DEFAULT '👤',
         is_bot BOOLEAN DEFAULT false,
         UNIQUE(game_id, player_number)
       )
@@ -85,6 +86,7 @@ const initDB = async () => {
         prize INTEGER,
         prize_type VARCHAR(50),
         player_number INTEGER,
+        avatar VARCHAR(50),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -142,6 +144,8 @@ if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
   } catch (error) {
     console.log('⚠️  Bot not started:', error.message);
   }
+} else {
+  console.log('🤖 Bot token not provided, running in API-only mode');
 }
 
 // Error handling
@@ -162,5 +166,6 @@ initDB().then(() => {
     console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🗄️ Database: PostgreSQL`);
     console.log(`🔗 Health: https://telegram-lottery-bot-e75s.onrender.com/health`);
+    console.log(`🎯 Frontend: https://telegram-lottery-bot.netlify.app`);
   });
 });
