@@ -82,29 +82,66 @@ module.exports = (pool) => {
       if (userResult.rows.length > 0) {
         user = userResult.rows[0];
         console.log('User found:', user.telegram_id);
+        
+        // Проверяем наличие колонки avatar и обновляем если нужно
+        if (!user.avatar) {
+          const avatar = generateUserAvatar(userData);
+          console.log('Updating user avatar:', avatar);
+          await client.query(
+            'UPDATE users SET avatar = $1 WHERE telegram_id = $2',
+            [avatar, userData.telegramId]
+          );
+          user.avatar = avatar;
+        }
       } else {
         // Генерируем аватар
         const avatar = generateUserAvatar(userData);
         console.log('Creating new user with avatar:', avatar);
 
-        // Создаем нового пользователя с 0 балансом
-        const newUserResult = await client.query(
-          `INSERT INTO users 
-           (telegram_id, first_name, last_name, username, balance, avatar) 
-           VALUES ($1, $2, $3, $4, $5, $6) 
-           RETURNING *`,
-          [
-            userData.telegramId,
-            userData.firstName || '',
-            userData.lastName || '',
-            userData.username || '',
-            0, // Начинаем с 0 звезд
-            avatar
-          ]
-        );
+        try {
+          // Пытаемся создать пользователя с аватаром
+          const newUserResult = await client.query(
+            `INSERT INTO users 
+             (telegram_id, first_name, last_name, username, balance, avatar) 
+             VALUES ($1, $2, $3, $4, $5, $6) 
+             RETURNING *`,
+            [
+              userData.telegramId,
+              userData.firstName || '',
+              userData.lastName || '',
+              userData.username || '',
+              0, // Начинаем с 0 звезд
+              avatar
+            ]
+          );
 
-        user = newUserResult.rows[0];
-        console.log('New user created:', user.telegram_id);
+          user = newUserResult.rows[0];
+          console.log('New user created:', user.telegram_id);
+        } catch (insertError) {
+          // Если ошибка из-за отсутствия колонки avatar, создаем без нее
+          if (insertError.code === '42703') { // column does not exist
+            console.log('Avatar column missing, creating user without avatar...');
+            const newUserResult = await client.query(
+              `INSERT INTO users 
+               (telegram_id, first_name, last_name, username, balance) 
+               VALUES ($1, $2, $3, $4, $5) 
+               RETURNING *`,
+              [
+                userData.telegramId,
+                userData.firstName || '',
+                userData.lastName || '',
+                userData.username || '',
+                0
+              ]
+            );
+
+            user = newUserResult.rows[0];
+            user.avatar = generateUserAvatar(userData); // Добавляем аватар локально
+            console.log('New user created (without avatar column):', user.telegram_id);
+          } else {
+            throw insertError;
+          }
+        }
       }
 
       await client.query('COMMIT');
@@ -169,10 +206,10 @@ module.exports = (pool) => {
           lastName: user.last_name,
           username: user.username,
           balance: user.balance,
-          gamesPlayed: user.games_played,
-          gamesWon: user.games_won,
-          totalWinnings: user.total_winnings,
-          avatar: user.avatar
+          gamesPlayed: user.games_played || 0,
+          gamesWon: user.games_won || 0,
+          totalWinnings: user.total_winnings || 0,
+          avatar: user.avatar || '👤'
         },
         mode: 'telegram'
       };
