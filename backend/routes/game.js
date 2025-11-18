@@ -317,7 +317,7 @@ module.exports = (pool) => {
     }
   });
 
-  // Finish game with winners
+  // Finish game with winners - НОВЫЙ ЭНДПОИНТ
   router.post('/finish', async (req, res) => {
     const client = await pool.connect();
     
