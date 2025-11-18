@@ -1,23 +1,21 @@
 {
-  "name": "telegram-lottery-bot",
-   "version": "1.0.0",
+  "name": "telegram-lottery-backend",
+  "version": "1.0.0",
   "description": "Backend for Telegram Lottery Mini App",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "bot": "node bot/bot.js",
-    "render-build": "npm install"
+    "bot": "node bot/bot.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "mongoose": "^7.5.0",
+    "pg": "^8.11.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "telegraf": "^4.15.0",
     "crypto": "^1.0.1",
-    "axios": "^1.5.0",
-    "express-rate-limit": "^6.10.0"
+    "axios": "^1.5.0"
   },
   "engines": {
     "node": ">=18.0.0"
