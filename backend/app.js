@@ -76,7 +76,38 @@ const initDB = async () => {
         UNIQUE(game_id, player_number)
       )
     `);
+// Проверка и создание недостающих столбцов
+const checkAndFixTables = async () => {
+  try {
+    // Проверяем и добавляем столбец avatar в users если его нет
+    await pool.query(`
+      DO $$ 
+      BEGIN 
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                         WHERE table_name = 'users' AND column_name = 'avatar') THEN
+              ALTER TABLE users ADD COLUMN avatar VARCHAR(50) DEFAULT '👤';
+              RAISE NOTICE 'Added avatar column to users table';
+          END IF;
+      END $$;
+    `);
 
+    // Проверяем и добавляем столбец avatar в game_players если его нет
+    await pool.query(`
+      DO $$ 
+      BEGIN 
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                         WHERE table_name = 'game_players' AND column_name = 'avatar') THEN
+              ALTER TABLE game_players ADD COLUMN avatar VARCHAR(50) DEFAULT '👤';
+              RAISE NOTICE 'Added avatar column to game_players table';
+          END IF;
+      END $$;
+    `);
+
+    console.log('✅ Table structure verified and fixed if needed');
+  } catch (error) {
+    console.error('❌ Error checking/fixing tables:', error);
+  }
+};
     // Создаем таблицу победителей
     await pool.query(`
       CREATE TABLE IF NOT EXISTS winners (
@@ -169,3 +200,4 @@ initDB().then(() => {
     console.log(`🎯 Frontend: https://telegram-lottery-bot.netlify.app`);
   });
 });
+
