@@ -24,7 +24,7 @@ const API = {
     }
   },
 
-  // Методы API - убедитесь, что синтаксис правильный
+  // Методы API
   authenticate(initData) { 
     return this.request('/auth/telegram', { 
       method: 'POST', 
@@ -80,17 +80,7 @@ const API = {
   }
 };
 
-  authenticate(initData) { return this.request('/auth/telegram', { method: 'POST', body: JSON.stringify({ initData }) }); },
-  getCurrentGame() { return this.request('/game/current'); },
-  joinGame(data) { return this.request('/game/join', { method: 'POST', body: JSON.stringify(data) }); },
-  leaveGame(telegramId) { return this.request('/game/leave', { method: 'POST', body: JSON.stringify({ telegramId }) }); },
-  getUserProfile(id) { return this.request(`/user/profile/${id}`); },
-  createStarsInvoiceLink(telegramId, amount) { return this.request('/payment/create-invoice-link', { method: 'POST', body: JSON.stringify({ telegramId, amount }) }); },
-  withdrawToTonSpace(telegramId, amount) { return this.request('/payment/withdraw-to-tonspace', { method: 'POST', body: JSON.stringify({ telegramId, amount }) }); },
-  demoPayment(telegramId, amount) { return this.request('/payment/demo-payment', { method: 'POST', body: JSON.stringify({ telegramId, amount }) }); }
-};
-
-// Аватар
+// Аватар компонент
 const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
   const sizes = { large: '56px', normal: '40px', small: '32px' };
   const isSvg = avatar && (avatar.includes('.svg') || avatar.includes('/userpic/'));
@@ -131,7 +121,7 @@ const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
   }, initials);
 };
 
-// Header Component - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Header Component
 const Header = () => {
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('home');
@@ -311,7 +301,7 @@ const Header = () => {
   );
 };
 
-// Профиль с выводом
+// Профиль компонент
 const Profile = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -322,13 +312,15 @@ const Profile = () => {
     try {
       const res = await API.getUserProfile(tgUser.id);
       if (res.success) setUser(res.user);
-    } catch (err) {}
+    } catch (err) {
+      console.log('Profile load error:', err);
+    }
   };
 
   useEffect(() => {
     loadUser();
-    const i = setInterval(loadUser, 8000);
-    return () => clearInterval(i);
+    const interval = setInterval(loadUser, 8000);
+    return () => clearInterval(interval);
   }, []);
 
   const handlePayment = async (amount) => {
@@ -372,13 +364,13 @@ const Profile = () => {
     React.createElement('div', { className: 'profile-actions' },
       React.createElement('h2', null, 'Пополнить'),
       React.createElement('div', { className: 'action-buttons' },
-        [10, 50, 100, 500].map(a => 
+        [10, 50, 100, 500].map(amount => 
           React.createElement('button', {
-            key: a,
+            key: amount,
             className: 'control-button primary',
-            onClick: () => handlePayment(a),
+            onClick: () => handlePayment(amount),
             disabled: loading
-          }, `${a} ⭐`)
+          }, `${amount} ⭐`)
         )
       )
     ),
@@ -557,8 +549,8 @@ const Game = () => {
                 setBankAmount(gameData.bankAmount || 0);
                 setGameState(gameData.status || 'waiting');
                 
-                const userPlayer = gameData.players.find(p => 
-                    p.telegramId === (currentUser?.telegramId)
+                const userPlayer = gameData.players.find(player => 
+                    player.telegramId === (currentUser?.telegramId)
                 );
                 if (userPlayer) {
                     setUserNumber(userPlayer.number);
@@ -590,7 +582,7 @@ const Game = () => {
             return;
         }
         
-        if (players.find(p => p.telegramId === currentUser?.telegramId)) {
+        if (players.find(player => player.telegramId === currentUser?.telegramId)) {
             alert('Вы уже в лобби!');
             return;
         }
@@ -673,7 +665,7 @@ const Game = () => {
             alert('❌ Ошибка при выходе из лобби');
         }
         
-        const newPlayers = players.filter(p => p.telegramId !== currentUser.telegramId);
+        const newPlayers = players.filter(player => player.telegramId !== currentUser.telegramId);
         setPlayers(newPlayers);
         setBankAmount(calculateBank(newPlayers.length));
         setUserNumber(null);
@@ -684,7 +676,7 @@ const Game = () => {
     };
 
     const startGame = async () => {
-        const realPlayersCount = players.filter(p => !p.isBot).length;
+        const realPlayersCount = players.filter(player => !player.isBot).length;
         if (realPlayersCount < 2) {
             alert('❌ Нужно минимум 2 реальных игрока для начала игры! Сейчас: ' + realPlayersCount);
             return;
@@ -791,9 +783,9 @@ const Game = () => {
         initializeGame();
     };
 
-    const isUserInGame = players.some(p => p.telegramId === currentUser?.telegramId);
+    const isUserInGame = players.some(player => player.telegramId === currentUser?.telegramId);
     const timeInLobby = joinTime ? Math.floor((Date.now() - joinTime) / 1000) : 0;
-    const realPlayersCount = players.filter(p => !p.isBot).length;
+    const realPlayersCount = players.filter(player => !player.isBot).length;
 
     return React.createElement('div', { className: 'game-page' },
         gameState === 'waiting' &&
@@ -929,7 +921,7 @@ const Game = () => {
     );
 };
 
-
+// Main App Component
 const App = () => {
   useEffect(() => {
     if (window.Telegram?.WebApp) {
@@ -952,4 +944,3 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
-
