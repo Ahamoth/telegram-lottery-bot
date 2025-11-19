@@ -40,33 +40,25 @@ module.exports = (pool, bot) => {
     }
   };
 
-  // Главная функция — сохраняет или создает пользователя
-  const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+ // Упрощаем функцию findOrCreateUser
+const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-      let user = (await client.query(
-        'SELECT * FROM users WHERE telegram_id = $1', 
-        [userData.telegramId]
-      )).rows[0];
+    let user = (await client.query(
+      'SELECT * FROM users WHERE telegram_id = $1', 
+      [userData.telegramId]
+    )).rows[0];
 
-      let finalPhotoUrl = photoUrlFromTelegram;
-
-      // Если Telegram отдал SVG или null — запрашиваем настоящее фото через бота
-      if ((!finalPhotoUrl || finalPhotoUrl.includes('.svg') || finalPhotoUrl.includes('/userpic/')) && bot) {
-        try {
-          const photos = await bot.telegram.getUserProfilePhotos(userData.telegramId, { limit: 1 });
-          if (photos.total_count > 0) {
-            const file = await bot.telegram.getFile(photos.photos[0][photos.photos[0].length - 1].file_id);
-            finalPhotoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-          }
-        } catch (e) {
-          console.log('Не удалось загрузить фото профиля для', userData.telegramId);
-          finalPhotoUrl = null;
-        }
-      }
-
+    // Используем фото из Telegram или оставляем null
+    let finalPhotoUrl = photoUrlFromTelegram;
+    
+    // УБИРАЕМ сложную логику получения фото через бота
+    // Просто используем то, что пришло из Telegram
+    if (finalPhotoUrl && (finalPhotoUrl.includes('.svg') || finalPhotoUrl.includes('/userpic/'))) {
+      finalPhotoUrl = null; // Игнорируем SVG и дефолтные аватарки
+    }
       if (user) {
         // Обновляем данные пользователя если изменились
         const updateFields = [];
@@ -196,3 +188,4 @@ module.exports = (pool, bot) => {
 
   return router;
 };
+
