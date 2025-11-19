@@ -40,25 +40,33 @@ module.exports = (pool, bot) => {
     }
   };
 
- // Упрощаем функцию findOrCreateUser
-const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  // Главная функция — сохраняет или создает пользователя
+  const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    let user = (await client.query(
-      'SELECT * FROM users WHERE telegram_id = $1', 
-      [userData.telegramId]
-    )).rows[0];
+      let user = (await client.query(
+        'SELECT * FROM users WHERE telegram_id = $1', 
+        [userData.telegramId]
+      )).rows[0];
 
-    // Используем фото из Telegram или оставляем null
-    let finalPhotoUrl = photoUrlFromTelegram;
-    
-    // УБИРАЕМ сложную логику получения фото через бота
-    // Просто используем то, что пришло из Telegram
-    if (finalPhotoUrl && (finalPhotoUrl.includes('.svg') || finalPhotoUrl.includes('/userpic/'))) {
-      finalPhotoUrl = null; // Игнорируем SVG и дефолтные аватарки
-    }
+      let finalPhotoUrl = photoUrlFromTelegram;
+
+      // Если Telegram отдал SVG или null — запрашиваем настоящее фото через бота
+      if ((!finalPhotoUrl || finalPhotoUrl.includes('.svg') || finalPhotoUrl.includes('/userpic/')) && bot) {
+        try {
+          const photos = await bot.telegram.getUserProfilePhotos(userData.telegramId, { limit: 1 });
+          if (photos.total_count > 0) {
+            const file = await bot.telegram.getFile(photos.photos[0][photos.photos[0].length - 1].file_id);
+            finalPhotoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+          }
+        } catch (e) {
+          console.log('Не удалось загрузить фото профиля для', userData.telegramId);
+          finalPhotoUrl = null;
+        }
+      }
+
       if (user) {
         // Обновляем данные пользователя если изменились
         const updateFields = [];
@@ -98,7 +106,7 @@ const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
           user = { ...user, ...userData, avatar: finalPhotoUrl };
         }
       } else {
-        // Создаём нового пользователя
+        // Создаём нового пользователя с балансом 0
         const res = await client.query(
           `INSERT INTO users 
            (telegram_id, first_name, last_name, username, balance, avatar)
@@ -106,14 +114,15 @@ const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
            RETURNING *`,
           [
             userData.telegramId, 
-            userData.firstName || '', 
+            userData.firstName || 'User', 
             userData.lastName || '', 
             userData.username || null, 
-            0, 
+            0, // Начальный баланс 0
             finalPhotoUrl
           ]
         );
         user = res.rows[0];
+        console.log(`👤 Создан новый пользователь: ${userData.telegramId} с балансом 0`);
       }
 
       await client.query('COMMIT');
@@ -188,4 +197,3 @@ const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
 
   return router;
 };
-
