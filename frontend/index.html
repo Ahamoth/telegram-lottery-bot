@@ -72,11 +72,23 @@
     Telegram.WebApp.setBackgroundColor('#667eea');
     
     console.log('Telegram Web App initialized');
-    console.log('User:', Telegram.WebApp.initDataUnsafe?.user);
+    console.log('User data:', Telegram.WebApp.initDataUnsafe?.user);
+    console.log('Init data string:', Telegram.WebApp.initData);
+    
+    // Диагностика данных пользователя
+    if (Telegram.WebApp.initDataUnsafe?.user) {
+      const user = Telegram.WebApp.initDataUnsafe.user;
+      console.log('User ID:', user.id);
+      console.log('User first name:', user.first_name);
+      console.log('User username:', user.username);
+      console.log('User photo URL:', user.photo_url);
+    } else {
+      console.warn('No user data found in Telegram Web App');
+    }
   } else {
     console.log('Telegram Web App not detected - running in browser mode');
   }
 </script>
-</body>
 </html>
+
 
