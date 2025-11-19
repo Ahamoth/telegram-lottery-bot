@@ -187,30 +187,17 @@ const Header = () => {
     };
 
     const generateTelegramAvatar = (tgUser) => {
-        if (!tgUser) return '👤';
-        
-        // Проверяем дефолтный ли аватар
-        if (tgUser.photo_url && !tgUser.photo_url.includes('/i/userpic/320/')) {
-            // Реальное фото профиля
-            return tgUser.photo_url;
-        }
-        
-        // Генерируем эмодзи-аватар
-        const emojiAvatars = ['😊', '😎', '🤠', '👨‍💻', '👩‍💻', '🦊', '🐯', '🐶', '🐱', '🐼'];
-        
-        if (tgUser.username) {
-            const firstChar = tgUser.username.charAt(0).toUpperCase();
-            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
-            return emojiAvatars[emojiIndex];
-        } else if (tgUser.first_name) {
-            const firstChar = tgUser.first_name.charAt(0).toUpperCase();
-            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
-            return emojiAvatars[emojiIndex];
-        }
-        
-        return '👤';
-    };
-
+  if (!tgUser) return 'default'; // Используем дефолтный аватар
+  
+  // Проверяем есть ли реальное фото (не дефолтное)
+  if (tgUser.photo_url && !tgUser.photo_url.includes('/i/userpic/320/')) {
+    // Реальное фото профиля
+    return tgUser.photo_url;
+  }
+  
+  // Во всех остальных случаях - дефолтный Telegram аватар
+  return 'default';
+};
     const navigateTo = (page) => {
         window.location.hash = page;
     };
@@ -1186,5 +1173,6 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
