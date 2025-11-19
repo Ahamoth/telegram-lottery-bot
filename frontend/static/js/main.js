@@ -203,18 +203,18 @@ const Header = () => {
         }
     };
 
-    const generateTelegramAvatar = (tgUser) => {
-  if (!tgUser) return 'default'; // Используем дефолтный аватар
+   // В Header компоненте
+const generateTelegramAvatar = (tgUser) => {
+  if (!tgUser) return 'default';
   
-  // Проверяем есть ли реальное фото (не дефолтное)
+  // Проверяем есть ли реальное фото (не дефолтное SVG)
   if (tgUser.photo_url && !tgUser.photo_url.includes('/i/userpic/320/')) {
-    // Реальное фото профиля
-    return tgUser.photo_url;
+    return tgUser.photo_url; // Реальное фото
   }
   
-  // Во всех остальных случаях - дефолтный Telegram аватар
-  return 'default';
+  return 'default'; // Дефолтный аватар
 };
+
     const navigateTo = (page) => {
         window.location.hash = page;
     };
@@ -1188,6 +1188,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
