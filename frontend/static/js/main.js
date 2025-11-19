@@ -854,7 +854,7 @@ const Roulette = ({ onSpinComplete }) => {
     );
 };
 
-// Game Component
+// Game Component - ИСПРАВЛЕННАЯ ВЕРСИЯ
 const Game = () => {
     const [players, setPlayers] = useState([]);
     const [gameState, setGameState] = useState('waiting');
@@ -1428,3 +1428,4 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
+
