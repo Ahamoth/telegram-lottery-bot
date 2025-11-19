@@ -97,6 +97,43 @@ const API = {
   }
 };
 
+// Компонент для отображения аватара
+const UserAvatar = ({ avatar, size = 'normal' }) => {
+  const isEmoji = typeof avatar === 'string' && avatar.length <= 3;
+  const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
+  
+  if (isImageUrl) {
+    // Реальное фото
+    return React.createElement('img', {
+      src: avatar,
+      className: `user-avatar ${size}`,
+      style: {
+        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        borderRadius: '50%',
+        objectFit: 'cover'
+      },
+      alt: "User Avatar"
+    });
+  } else {
+    // Эмодзи аватар
+    return React.createElement('div', {
+      className: `user-avatar ${size} emoji-avatar`,
+      style: {
+        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        fontSize: size === 'large' ? '24px' : size === 'normal' ? '20px' : '16px',
+        border: '2px solid rgba(255, 215, 0, 0.5)'
+      }
+    }, avatar || '👤');
+  }
+};
+
 // Header Component
 const Header = () => {
     const [user, setUser] = useState(null);
@@ -150,29 +187,29 @@ const Header = () => {
     };
 
     const generateTelegramAvatar = (tgUser) => {
-  if (!tgUser) return '👤';
-  
-  // Проверяем дефолтный ли аватар
-  if (tgUser.photo_url && !tgUser.photo_url.includes('/i/userpic/320/')) {
-    // Реальное фото профиля
-    return tgUser.photo_url;
-  }
-  
-  // Генерируем эмодзи-аватар
-  const emojiAvatars = ['😊', '😎', '🤠', '👨‍💻', '👩‍💻', '🦊', '🐯', '🐶', '🐱', '🐼'];
-  
-  if (tgUser.username) {
-    const firstChar = tgUser.username.charAt(0).toUpperCase();
-    const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
-    return emojiAvatars[emojiIndex];
-  } else if (tgUser.first_name) {
-    const firstChar = tgUser.first_name.charAt(0).toUpperCase();
-    const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
-    return emojiAvatars[emojiIndex];
-  }
-  
-  return '👤';
-};
+        if (!tgUser) return '👤';
+        
+        // Проверяем дефолтный ли аватар
+        if (tgUser.photo_url && !tgUser.photo_url.includes('/i/userpic/320/')) {
+            // Реальное фото профиля
+            return tgUser.photo_url;
+        }
+        
+        // Генерируем эмодзи-аватар
+        const emojiAvatars = ['😊', '😎', '🤠', '👨‍💻', '👩‍💻', '🦊', '🐯', '🐶', '🐱', '🐼'];
+        
+        if (tgUser.username) {
+            const firstChar = tgUser.username.charAt(0).toUpperCase();
+            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
+            return emojiAvatars[emojiIndex];
+        } else if (tgUser.first_name) {
+            const firstChar = tgUser.first_name.charAt(0).toUpperCase();
+            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
+            return emojiAvatars[emojiIndex];
+        }
+        
+        return '👤';
+    };
 
     const navigateTo = (page) => {
         window.location.hash = page;
@@ -203,60 +240,12 @@ const Header = () => {
             )
         ),
         React.createElement('div', { className: 'header-user' },
-            React.createElement('div', { className: 'user-avatar' }, userAvatar),
+            React.createElement(UserAvatar, { avatar: userAvatar, size: 'normal' }),
             React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
         )
     );
-  // В Header компоненте
-React.createElement('div', { className: 'header-user' },
-  React.createElement(UserAvatar, { avatar: userAvatar, size: 'normal' }),
-  React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
-);
 };
-// В PlayerCard компоненте
-React.createElement('div', { 
-  key: player.id || player.telegramId,
-  className: `player-card ${player.telegramId === currentUser?.telegramId ? 'current-user' : ''}`
-},
-  React.createElement(UserAvatar, { avatar: player.avatar, size: 'normal' }),
-  // ... остальные элементы
-);
-// Компонент для отображения аватара
-const UserAvatar = ({ avatar, size = 'normal' }) => {
-  const isEmoji = typeof avatar === 'string' && avatar.length <= 3;
-  const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
-  
-  if (isImageUrl) {
-    // Реальное фото
-    return React.createElement('img', {
-      src: avatar,
-      className: `user-avatar ${size}`,
-      style: {
-        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        borderRadius: '50%',
-        objectFit: 'cover'
-      },
-      alt: "User Avatar"
-    });
-  } else {
-    // Эмодзи аватар
-    return React.createElement('div', {
-      className: `user-avatar ${size} emoji-avatar`,
-      style: {
-        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        fontSize: size === 'large' ? '24px' : size === 'normal' ? '20px' : '16px',
-        border: '2px solid rgba(255, 215, 0, 0.5)'
-      }
-    }, avatar || '👤');
-  }
-};
+
 // Home Page Component
 const Home = () => {
     const navigateTo = (page) => {
@@ -768,13 +757,7 @@ const Game = () => {
                             key: player.id || player.telegramId,
                             className: `player-card ${player.telegramId === currentUser?.telegramId ? 'current-user' : ''}`
                         },
-                            React.createElement('div', { 
-                                className: 'player-avatar',
-                                style: { 
-                                    fontSize: '2rem',
-                                    animation: player.telegramId === currentUser?.telegramId ? 'pulse 2s infinite' : 'none'
-                                }
-                            }, player.avatar),
+                            React.createElement(UserAvatar, { avatar: player.avatar, size: 'normal' }),
                             React.createElement('div', { className: 'player-name' }, player.name),
                             React.createElement('div', { className: 'player-number' }, `#${player.number}`),
                             player.telegramId === currentUser?.telegramId && React.createElement('div', { 
@@ -867,7 +850,7 @@ const Game = () => {
                                     key: `${winner.id || winner.telegramId}-${winner.type}`,
                                     className: `winner-badge ${winner.telegramId === currentUser?.telegramId ? 'current-user' : ''} winner-${winner.type}`
                                 },
-                                    React.createElement('div', { className: 'winner-avatar' }, winner.avatar),
+                                    React.createElement(UserAvatar, { avatar: winner.avatar, size: 'normal' }),
                                     React.createElement('div', { className: 'winner-info' },
                                         React.createElement('div', { className: 'winner-name' }, winner.name),
                                         React.createElement('div', { className: 'winner-prize' }, 
@@ -1203,8 +1186,3 @@ root.render(
         React.createElement(App)
     )
 );
-
-
-
-
-
