@@ -429,16 +429,14 @@ const Game = () => {
     };
 
     const getUserAvatar = (user) => {
-        if (user.avatar) return user.avatar;
-        
-        const emojiAvatars = ['😊', '😎', '🤠', '👨‍💻', '👩‍💻', '🦊', '🐯', '🐶', '🐱', '🐼'];
-        if (user.firstName) {
-            const firstChar = user.firstName.charAt(0).toUpperCase();
-            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
-            return emojiAvatars[emojiIndex];
-        }
-        return '👤';
-    };
+  // Если у пользователя есть аватар (из базы данных)
+  if (user.avatar && user.avatar !== 'default') {
+    return user.avatar;
+  }
+  
+  // В остальных случаях - дефолтный аватар
+  return 'default';
+};
 
     const joinGame = async () => {
         if (players.length >= 10) {
@@ -1173,6 +1171,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
