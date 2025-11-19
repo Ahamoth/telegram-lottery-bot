@@ -40,7 +40,7 @@ const initDB = async () => {
   try {
     console.log('Запуск миграций базы данных...');
 
-    // 1. Таблица users (сразу с правильным avatar)
+    // 1. users — сразу с правильным avatar TEXT
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -54,10 +54,53 @@ const initDB = async () => {
         total_winnings INTEGER DEFAULT 0,
         avatar TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      );
     `);
 
-    // 2. Таблица transactions — добавляем invoice_payload если нет
+    // 2. games
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS games (
+        id SERIAL PRIMARY KEY,
+        status VARCHAR(50) DEFAULT 'waiting',
+        bank_amount INTEGER DEFAULT 0,
+        winning_center INTEGER,
+        winning_left INTEGER,
+        winning_right INTEGER,
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 3. game_players
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS game_players (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+        telegram_id VARCHAR(255),
+        player_number INTEGER,
+        player_name VARCHAR(255),
+        avatar TEXT,
+        is_bot BOOLEAN DEFAULT false,
+        UNIQUE(game_id, player_number)
+      );
+    `);
+
+    // 4. winners
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS winners (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+        telegram_id VARCHAR(255),
+        prize INTEGER,
+        prize_type VARCHAR(50),
+        player_number INTEGER,
+        avatar TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 5. transactions — с колонкой invoice_payload
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
@@ -70,20 +113,15 @@ const initDB = async () => {
         invoice_payload TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      );
     `);
 
-    // 3. Остальные таблицы (games, game_players, winners) — оставь как у тебя было
-    await pool.query(`CREATE TABLE IF NOT EXISTS games ( ... твоя таблица ... )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS game_players ( ... )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS winners ( ... )`);
-
-    // 4. Миграции: расширяем avatar и добавляем invoice_payload (безопасно)
+    // === МИГРАЦИИ (если таблицы уже существуют) ===
     await pool.query(`ALTER TABLE users ALTER COLUMN avatar TYPE TEXT USING avatar::TEXT;`);
     await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS invoice_payload TEXT;`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_payload ON transactions(invoice_payload);`);
 
-    console.log('Все миграции выполнены успешно: avatar TEXT + invoice_payload готово');
+    console.log('Все таблицы и миграции выполнены успешно ✅');
   } catch (err) {
     console.error('Ошибка миграции:', err.message);
   }
@@ -146,3 +184,4 @@ const startServer = async () => {
 };
 
 startServer();
+
