@@ -99,15 +99,13 @@ module.exports = (pool) => {
   };
 
   router.post('/telegram', async (req, res) => {
-  console.log('Auth request – initData length:', req.body.initData?.length);
+  console.log('Auth request – initData length:', req.body.initData?.length || 0);
 
   try {
     const { initData } = req.body;
-    if (!initData) return res.status(400).json({ success: false, error: 'No initData' });
 
-    if (!process.env.BOT_TOKEN) {
-      console.error('BOT_TOKEN missing!');
-      return res.status(500).json({ success: false, error: 'Server config error' });
+    if (!initData) {
+      return res.status(400).json({ success: false, error: 'No initData' });
     }
 
     if (!validateTelegramData(initData)) {
@@ -115,37 +113,45 @@ module.exports = (pool) => {
       return res.status(401).json({ success: false, error: 'Invalid signature' });
     }
 
-      const tgUser = JSON.parse(decodeURIComponent(userParam));
+    // ←←← ВОТ ЭТА СТРОКА БЫЛА ПОТЕРЯНА!
+    const params = new URLSearchParams(initData);
+    const userParam = params.get('user');  // ← обязательно объяви!
 
-      const user = await findOrCreateUser({
-        telegramId: tgUser.id.toString(),
-        firstName: tgUser.first_name,
-        lastName: tgUser.last_name,
-        username: tgUser.username
-      }, tgUser);  // передаём полный объект tgUser
-
-      res.json({
-        success: true,
-        user: {
-          telegramId: user.telegram_id,
-          firstName: user.first_name,
-          lastName: user.last_name,
-          username: user.username,
-          balance: user.balance || 0,
-          gamesPlayed: user.games_played || 0,
-          gamesWon: user.games_won || 0,
-          totalWinnings: user.total_winnings || 0,
-          avatar: user.avatar  // ← теперь это настоящая ссылка https://... или null
-        },
-        mode: 'telegram'
-      });
-
-    } catch (error) {
-      console.error('Auth error:', error);
-      res.status(500).json({ success: false, error: 'Authentication failed' });
+    if (!userParam) {
+      return res.status(400).json({ success: false, error: 'No user in initData' });
     }
-  });
 
+    const tgUser = JSON.parse(decodeURIComponent(userParam));
+
+    const user = await findOrCreateUser({
+      telegramId: tgUser.id.toString(),
+      firstName: tgUser.first_name || '',
+      lastName: tgUser.last_name || '',
+      username: tgUser.username || ''
+    }, tgUser);
+
+    res.json({
+      success: true,
+      user: {
+        telegramId: user.telegram_id,
+        firstName: user.first_name || '',
+        lastName: user.last_name || '',
+        username: user.username || '',
+        balance: user.balance || 0,
+        gamesPlayed: user.games_played || 0,
+        gamesWon: user.games_won || 0,
+        totalWinnings: user.total_winnings || 0,
+        avatar: user.avatar  // ← реальная ссылка или null
+      },
+      mode: 'telegram'
+    });
+
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(500).json({ success: false, error: 'Authentication failed' });
+  }
+});
   return router;
 };
+
 
