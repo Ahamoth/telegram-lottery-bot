@@ -1,3 +1,4 @@
+// backend/app.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -34,13 +35,13 @@ pool.connect((err) => {
 });
 
 // ==================================================================
-// ВСЯ ИНИЦИАЛИЗАЦИЯ И МИГРАЦИИ БАЗЫ — ОДНИМ БЛОКОМ
+// ИНИЦИАЛИЗАЦИЯ И МИГРАЦИИ БАЗЫ
 // ==================================================================
 const initDB = async () => {
   try {
     console.log('Запуск миграций базы данных...');
 
-    // 1. users — сразу с правильным avatar TEXT
+    // 1. users
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -100,7 +101,7 @@ const initDB = async () => {
       );
     `);
 
-    // 5. transactions — с колонкой invoice_payload
+    // 5. transactions
     await pool.query(`
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
@@ -116,10 +117,18 @@ const initDB = async () => {
       );
     `);
 
-    // === МИГРАЦИИ (если таблицы уже существуют) ===
-    await pool.query(`ALTER TABLE users ALTER COLUMN avatar TYPE TEXT USING avatar::TEXT;`);
-    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS invoice_payload TEXT;`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_payload ON transactions(invoice_payload);`);
+    // Миграции
+    try {
+      await pool.query(`ALTER TABLE users ALTER COLUMN avatar TYPE TEXT USING avatar::TEXT;`);
+    } catch (e) {}
+    
+    try {
+      await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS invoice_payload TEXT;`);
+    } catch (e) {}
+    
+    try {
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_payload ON transactions(invoice_payload);`);
+    } catch (e) {}
 
     console.log('Все таблицы и миграции выполнены успешно ✅');
   } catch (err) {
@@ -131,26 +140,33 @@ const initDB = async () => {
 app.get('/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'OK', database: 'connected', timestamp: new Date().toISOString() });
+    res.json({ 
+      status: 'OK', 
+      database: 'connected', 
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development'
+    });
   } catch (err) {
     res.status(500).json({ status: 'ERROR', database: 'disconnected' });
   }
 });
 
-// Загружаем бота (передаём pool!)
+// Загружаем бота
 let bot = null;
 if (process.env.BOT_TOKEN) {
   try {
     console.log('Загрузка бота...');
-    bot = require('./bot/bot')(pool);  // ← pool передаётся!
+    bot = require('./bot/bot')(pool);
     bot.telegram.getMe().then(info => console.log(`Bot @${info.username} готов`));
   } catch (e) {
     console.error('Ошибка загрузки бота:', e.message);
   }
+} else {
+  console.log('BOT_TOKEN не найден, бот не запускается');
 }
 
-// Роуты
-app.use('/api/auth', require('./routes/auth')(pool, bot));
+// Роуты (ВАЖНО: передаем bot в auth)
+app.use('/api/auth', require('./routes/auth')(pool, bot)); // ← исправлено
 app.use('/api/game', require('./routes/game')(pool));
 app.use('/api/user', require('./routes/user')(pool));
 app.use('/api/payment', require('./routes/payment')(pool, bot));
@@ -160,7 +176,8 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Telegram Lottery API v1.0',
     stars_payments: !!bot ? 'ENABLED' : 'DISABLED',
-    real_avatars: 'ENABLED',
+    bot_ready: !!bot,
+    database: 'connected',
     timestamp: new Date().toISOString()
   });
 });
@@ -168,21 +185,22 @@ app.get('/', (req, res) => {
 // Глобальная ошибка
 app.use((err, req, res, next) => {
   console.error('Global error:', err);
-  res.status(500).json({ success: false, error: 'Server error' });
+  res.status(500).json({ 
+    success: false, 
+    error: 'Server error: ' + err.message 
+  });
 });
 
 const PORT = process.env.PORT || 10000;
 
 const startServer = async () => {
-  await initDB();  // ← Все миграции здесь
+  await initDB();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Сервер запущен на порту ${PORT}`);
     console.log(`Stars Payments: ${bot ? 'ВКЛЮЧЕНЫ ✅' : 'ВЫКЛЮЧЕНЫ ❌'}`);
-    console.log(`Реальные аватары: ВКЛЮЧЕНЫ ✅`);
+    console.log(`Режим: ${process.env.NODE_ENV || 'development'}`);
   });
 };
 
 startServer();
-
-
