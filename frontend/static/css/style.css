@@ -996,3 +996,33 @@ body {
         font-size: 1.8rem;
     }
 }
+.user-avatar {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-avatar.emoji-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 215, 0, 0.5);
+}
+
+.user-avatar.normal {
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+}
+
+.user-avatar.large {
+  width: 50px;
+  height: 50px;
+  font-size: 24px;
+}
+
+.user-avatar.small {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+}
