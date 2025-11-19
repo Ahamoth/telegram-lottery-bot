@@ -75,7 +75,7 @@ const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
   }, initials);
 };
 
-// Хедер с навигацией
+// Хедер с РАБОЧИМИ кнопками
 const Header = () => {
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('home');
@@ -90,27 +90,37 @@ const Header = () => {
     };
     init();
 
-    const hashHandler = () => setCurrentPage(window.location.hash.slice(1) || 'home');
-    window.addEventListener('hashchange', hashHandler);
-    hashHandler();
+    // Слушаем изменение хеша и обновляем состояние
+    const handleHash = () => {
+      const page = window.location.hash.slice(1) || 'home';
+      setCurrentPage(page);
+    };
 
-    return () => window.removeEventListener('hashchange', hashHandler);
+    window.addEventListener('hashchange', handleHash);
+    handleHash(); // сразу при загрузке
+
+    return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
   const navigate = (page) => {
-    window.location.hash = page;
+    window.location.hash = page; // это вызовет handleHash и перерисует
   };
 
   return React.createElement('header', { className: 'header' },
+    // Верхняя часть — аватар и баланс
     React.createElement('div', { className: 'top-bar' },
-      user && React.createElement(UserAvatar, { avatar: user.avatar, name: user.firstName || user.username, size: 'large' }),
+      user && React.createElement(UserAvatar, { 
+        avatar: user.avatar, 
+        name: user.firstName || user.username, 
+        size: 'large' 
+      }),
       React.createElement('div', { className: 'user-info' },
         React.createElement('div', { className: 'user-name' }, user?.firstName || 'Игрок'),
         React.createElement('div', { className: 'user-balance' }, user ? `${user.balance} ⭐` : '0 ⭐')
       )
     ),
 
-    // Навигация
+    // Нижняя навигация — РАБОЧИЕ КНОПКИ
     React.createElement('nav', { className: 'bottom-nav' },
       React.createElement('button', {
         className: `nav-btn ${currentPage === 'home' ? 'active' : ''}`,
@@ -747,22 +757,21 @@ const Game = () => {
 };
 
 
-// App
 const App = () => {
   useEffect(() => {
     if (window.Telegram?.WebApp) {
       Telegram.WebApp.ready();
       Telegram.WebApp.expand();
-      Telegram.WebApp.setHeaderColor('#1a1a2e');
-      Telegram.WebApp.setBackgroundColor('#0f0f1a');
     }
   }, []);
+
+  const page = window.location.hash.slice(1) || 'home';
 
   return React.createElement('div', { className: 'App' },
     React.createElement(Header),
     React.createElement('main', null,
-      window.location.hash === '#profile' ? React.createElement(Profile) :
-      window.location.hash === '#game' ? React.createElement(Game) :
+      page === 'profile' ? React.createElement(Profile) :
+      page === 'game' ? React.createElement(Game) :
       React.createElement(Home)
     )
   );
@@ -770,5 +779,4 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
-
 
