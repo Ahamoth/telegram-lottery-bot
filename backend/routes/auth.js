@@ -4,36 +4,28 @@ const crypto = require('crypto');
 module.exports = (pool) => {
   const router = express.Router();
 
-  // Validate Telegram Web App data
+  // Валидация initData от Telegram
   const validateTelegramData = (initData) => {
     try {
       const params = new URLSearchParams(initData);
       const hash = params.get('hash');
       const authDate = params.get('auth_date');
       
-      if (!hash || !authDate) {
-        return false;
-      }
+      if (!hash || !authDate) return false;
 
-      // Check if auth date is not too old (1 hour)
       const currentTime = Math.floor(Date.now() / 1000);
-      if (currentTime - parseInt(authDate) > 3600) {
-        return false;
-      }
+      if (currentTime - parseInt(authDate) > 3600) return false;
 
-      // Remove hash and sort parameters
       params.delete('hash');
       const dataCheckString = Array.from(params.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, value]) => `${key}=${value}`)
         .join('\n');
 
-      // Create secret key from bot token
       const secretKey = crypto.createHmac('sha256', 'WebAppData')
         .update(process.env.BOT_TOKEN)
         .digest();
       
-      // Calculate hash
       const calculatedHash = crypto.createHmac('sha256', secretKey)
         .update(dataCheckString)
         .digest('hex');
@@ -45,29 +37,17 @@ module.exports = (pool) => {
     }
   };
 
-  const generateUserAvatar = (userData, telegramUserData) => {
-  // Проверяем есть ли реальное фото (не дефолтное)
-  if (telegramUserData && telegramUserData.photo_url) {
-    const isDefaultAvatar = telegramUserData.photo_url.includes('/i/userpic/320/');
-    
-    if (!isDefaultAvatar) {
-      // Используем реальное фото профиля
-      return telegramUserData.photo_url;
-    }
-  }
-  
-  // Во всех остальных случаях - дефолтный аватар
-  return 'default';
-};
+  // Теперь просто возвращаем photo_url из Telegram — это уже готовая ссылка на фото 640×640
+  const getTelegramPhotoUrl = (tgUser) => {
+    return tgUser?.photo_url || null;
+  };
 
-  // Find or create user
-  const findOrCreateUser = async (userData) => {
+  const findOrCreateUser = async (userData, tgUser) => {
     const client = await pool.connect();
     
     try {
       await client.query('BEGIN');
 
-      // Проверяем существующего пользователя
       const userResult = await client.query(
         'SELECT * FROM users WHERE telegram_id = $1',
         [userData.telegramId]
@@ -77,67 +57,33 @@ module.exports = (pool) => {
 
       if (userResult.rows.length > 0) {
         user = userResult.rows[0];
-        console.log('User found:', user.telegram_id);
-        
-        // Проверяем наличие колонки avatar и обновляем если нужно
-        if (!user.avatar) {
-          const avatar = generateUserAvatar(userData);
-          console.log('Updating user avatar:', avatar);
+
+        // Обновляем фото, если оно изменилось или было null
+        const newPhotoUrl = getTelegramPhotoUrl(tgUser);
+        if (user.avatar !== newPhotoUrl) {
           await client.query(
             'UPDATE users SET avatar = $1 WHERE telegram_id = $2',
-            [avatar, userData.telegramId]
+            [newPhotoUrl, userData.telegramId]
           );
-          user.avatar = avatar;
+          user.avatar = newPhotoUrl;
         }
       } else {
-        // Генерируем аватар
-        const avatar = generateUserAvatar(userData);
-        console.log('Creating new user with avatar:', avatar);
-
-        try {
-          // Пытаемся создать пользователя с аватаром
-          const newUserResult = await client.query(
-            `INSERT INTO users 
-             (telegram_id, first_name, last_name, username, balance, avatar) 
-             VALUES ($1, $2, $3, $4, $5, $6) 
-             RETURNING *`,
-            [
-              userData.telegramId,
-              userData.firstName || '',
-              userData.lastName || '',
-              userData.username || '',
-              0, // Начинаем с 0 звезд
-              avatar
-            ]
-          );
-
-          user = newUserResult.rows[0];
-          console.log('New user created:', user.telegram_id);
-        } catch (insertError) {
-          // Если ошибка из-за отсутствия колонки avatar, создаем без нее
-          if (insertError.code === '42703') { // column does not exist
-            console.log('Avatar column missing, creating user without avatar...');
-            const newUserResult = await client.query(
-              `INSERT INTO users 
-               (telegram_id, first_name, last_name, username, balance) 
-               VALUES ($1, $2, $3, $4, $5) 
-               RETURNING *`,
-              [
-                userData.telegramId,
-                userData.firstName || '',
-                userData.lastName || '',
-                userData.username || '',
-                0
-              ]
-            );
-
-            user = newUserResult.rows[0];
-            user.avatar = generateUserAvatar(userData); // Добавляем аватар локально
-            console.log('New user created (without avatar column):', user.telegram_id);
-          } else {
-            throw insertError;
-          }
-        }
+        // Создаём нового пользователя с настоящим фото
+        const newUserResult = await client.query(
+          `INSERT INTO users 
+           (telegram_id, first_name, last_name, username, balance, avatar) 
+           VALUES ($1, $2, $3, $4, $5, $6) 
+           RETURNING *`,
+          [
+            userData.telegramId,
+            userData.firstName || '',
+            userData.lastName || '',
+            userData.username || '',
+            0,
+            getTelegramPhotoUrl(tgUser)  // ← реальное фото сразу!
+          ]
+        );
+        user = newUserResult.rows[0];
       }
 
       await client.query('COMMIT');
@@ -153,77 +99,51 @@ module.exports = (pool) => {
   };
 
   router.post('/telegram', async (req, res) => {
-    console.log('🔐 Auth request received');
+    console.log('Auth request received');
     
     try {
       const { initData } = req.body;
       
-      if (!initData) {
-        return res.status(401).json({ 
-          success: false,
-          error: 'Telegram authentication required' 
-        });
+      if (!initData || !validateTelegramData(initData)) {
+        return res.status(401).json({ success: false, error: 'Invalid Telegram data' });
       }
 
-      // Validate Telegram data
-      if (!validateTelegramData(initData)) {
-        return res.status(401).json({ 
-          success: false,
-          error: 'Invalid Telegram authentication' 
-        });
-      }
-
-      // Parse user data
       const params = new URLSearchParams(initData);
       const userParam = params.get('user');
-      
       if (!userParam) {
-        return res.status(401).json({ 
-          success: false,
-          error: 'User data not found' 
-        });
+        return res.status(401).json({ success: false, error: 'No user data' });
       }
 
-      const userData = JSON.parse(decodeURIComponent(userParam));
-      console.log('Processing Telegram user:', userData.id);
+      const tgUser = JSON.parse(decodeURIComponent(userParam));
 
       const user = await findOrCreateUser({
-        telegramId: userData.id.toString(),
-        firstName: userData.first_name,
-        lastName: userData.last_name,
-        username: userData.username
-      });
+        telegramId: tgUser.id.toString(),
+        firstName: tgUser.first_name,
+        lastName: tgUser.last_name,
+        username: tgUser.username
+      }, tgUser);  // передаём полный объект tgUser
 
-      const response = {
+      res.json({
         success: true,
         user: {
           telegramId: user.telegram_id,
           firstName: user.first_name,
           lastName: user.last_name,
           username: user.username,
-          balance: user.balance,
+          balance: user.balance || 0,
           gamesPlayed: user.games_played || 0,
           gamesWon: user.games_won || 0,
           totalWinnings: user.total_winnings || 0,
-          avatar: user.avatar || '👤'
+          avatar: user.avatar  // ← теперь это настоящая ссылка https://... или null
         },
         mode: 'telegram'
-      };
-
-      console.log('Auth successful for user:', user.telegram_id);
-      res.json(response);
+      });
 
     } catch (error) {
-      console.error('❌ Auth error:', error);
-      res.status(500).json({ 
-        success: false,
-        error: 'Authentication failed' 
-      });
+      console.error('Auth error:', error);
+      res.status(500).json({ success: false, error: 'Authentication failed' });
     }
   });
 
   return router;
 };
-
-
-
