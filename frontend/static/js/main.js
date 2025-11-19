@@ -195,7 +195,21 @@ const Header = () => {
             return tgUser.photo_url;
         }
         
-      
+        // Генерируем эмодзи-аватар
+        const emojiAvatars = ['😊', '😎', '🤠', '👨‍💻', '👩‍💻', '🦊', '🐯', '🐶', '🐱', '🐼'];
+        
+        if (tgUser.username) {
+            const firstChar = tgUser.username.charAt(0).toUpperCase();
+            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
+            return emojiAvatars[emojiIndex];
+        } else if (tgUser.first_name) {
+            const firstChar = tgUser.first_name.charAt(0).toUpperCase();
+            const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
+            return emojiAvatars[emojiIndex];
+        }
+        
+        return '👤';
+    };
 
     const navigateTo = (page) => {
         window.location.hash = page;
@@ -1172,4 +1186,5 @@ root.render(
         React.createElement(App)
     )
 );
+
 
