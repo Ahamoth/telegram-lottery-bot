@@ -207,6 +207,11 @@ const Header = () => {
             React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
         )
     );
+  // В Header компоненте
+React.createElement('div', { className: 'header-user' },
+  React.createElement(UserAvatar, { avatar: userAvatar, size: 'normal' }),
+  React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
+);
 };
 // Компонент для отображения аватара
 const UserAvatar = ({ avatar, size = 'normal' }) => {
@@ -1190,6 +1195,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
