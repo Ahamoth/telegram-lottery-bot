@@ -205,7 +205,6 @@ const Profile = () => {
       React.createElement('button', {
         className: 'control-button success',
         disabled: loading || user.balance < 10,
-,
         onClick: handleWithdraw
       }, `Вывести ${user.balance} ⭐ → TON Space`)
     )
@@ -246,3 +245,4 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
+
