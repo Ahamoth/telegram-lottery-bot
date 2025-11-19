@@ -841,7 +841,29 @@ const Profile = () => {
             setLoading(false);
         }
     };
+React.createElement('div', { className: 'profile-actions', style: { marginTop: '2rem' } },
+  React.createElement('h2', null, 'Вывод на TON Space'),
+  React.createElement('div', { className: 'balance-value', style: { marginBottom: '1rem' } }, 
+    `Доступно: ${user.balance} ⭐`
+  ),
+  React.createElement('button', {
+    className: 'control-button success',
+    disabled: user.balance < 10 || loading,
+    onClick: async () => {
+      if (!confirm(`Вывести ${user.balance} ⭐ на твой Telegram Wallet (TON Space)?`)) return;
 
+      setLoading(true);
+      const res = await API.request('/payment/withdraw-to-tonspace', {
+        method: 'POST',
+        body: JSON.stringify({ telegramId: user.telegramId, amount: user.balance })
+      });
+      setLoading(false);
+
+      alert(res.success ? res.message : res.error);
+      if (res.success) loadUserData();
+    }
+  }, loading ? 'Вывод...' : `Вывести ${user.balance} ⭐ → TON Space`)
+)
     return React.createElement('div', { className: 'profile' },
         React.createElement('div', { className: 'profile-header' },
             React.createElement('h1', null, 'Профиль'),
@@ -997,5 +1019,6 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
