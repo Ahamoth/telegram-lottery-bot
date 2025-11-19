@@ -41,7 +41,23 @@ const API = {
       body: JSON.stringify(data) 
     }); 
   },
-  
+  startGame() { 
+  return this.request('/game/start', { 
+    method: 'POST', 
+    body: JSON.stringify({}) 
+  }); 
+},
+
+finishGame(gameId, winningNumbers) { 
+  return this.request('/game/finish', { 
+    method: 'POST', 
+    body: JSON.stringify({ gameId, winningNumbers }) 
+  }); 
+},
+
+getUserProfile(id) { 
+  return this.request(`/user/current?telegramId=${id}`); 
+},
   leaveGame(telegramId) { 
     return this.request('/game/leave', { 
       method: 'POST', 
@@ -929,71 +945,127 @@ const Game = () => {
     };
 
     const startGame = async () => {
-        const realPlayersCount = players.filter(player => !player.isBot).length;
-        if (realPlayersCount < 2) {
-            alert('❌ Нужно минимум 2 реальных игрока для начала игры! Сейчас: ' + realPlayersCount);
-            return;
-        }
+  const realPlayersCount = players.filter(player => !player.isBot).length;
+  if (realPlayersCount < 2) {
+    alert('❌ Нужно минимум 2 реальных игрока для начала игры! Сейчас: ' + realPlayersCount);
+    return;
+  }
 
-        try {
-            const result = await API.startGame();
-            
-            if (result.success) {
-                setGameState('active');
-                setWinners([]);
-                setWinningNumbers(null);
-            } else {
-                alert('❌ Не удалось начать игру');
-            }
-        } catch (error) {
-            console.error('❌ API start failed:', error);
-            alert('❌ Ошибка соединения с сервером');
-        }
-    };
+  try {
+    const result = await API.startGame();
+    
+    if (result.success) {
+      setGameState('active');
+      setWinners([]);
+      setWinningNumbers(null);
+      alert('🎮 Игра началась! Рулетка запускается...');
+    } else {
+      alert('❌ Не удалось начать игру: ' + (result.error || 'Неизвестная ошибка'));
+    }
+  } catch (error) {
+    console.error('❌ API start failed:', error);
+    alert('❌ Ошибка соединения с сервером');
+  }
+};
 
-    const handleSpinComplete = (winningNums) => {
-        console.log('Рулетка завершила вращение. Выигрышные номера:', winningNums);
-        setWinningNumbers(winningNums);
+    // В Game компонент добавьте после handleSpinComplete:
+const handleSpinComplete = async (winningNums) => {
+  console.log('Рулетка завершила вращение. Выигрышные номера:', winningNums);
+  setWinningNumbers(winningNums);
+  
+  try {
+    // Получаем текущую игру
+    const gameData = await API.getCurrentGame();
+    if (gameData && gameData.id) {
+      // Завершаем игру на сервере
+      const finishResult = await API.finishGame(gameData.id, winningNums);
+      
+      if (finishResult.success) {
+        setWinners(finishResult.winners || []);
+        setBankAmount(finishResult.game?.bankAmount || bankAmount);
         
-        const prizeCenter = Math.floor(bankAmount * 0.5);
-        const prizeSide = Math.floor(bankAmount * 0.25);
+        // Обновляем баланс пользователя если он выиграл
+        const userWin = finishResult.winners?.find(w => 
+          w.telegramId === currentUser?.telegramId
+        );
         
-        const winnersList = [];
-        
-        const centerWinners = players
-            .filter(player => player.number === winningNums.center)
-            .map(player => ({ 
-                ...player, 
-                prize: prizeCenter, 
-                type: 'center',
-                prizeType: 'Главный приз'
-            }));
-        
-        const leftWinners = players
-            .filter(player => player.number === winningNums.left)
-            .map(player => ({ 
-                ...player, 
-                prize: prizeSide, 
-                type: 'left',
-                prizeType: 'Левый приз'
-            }));
-        
-        const rightWinners = players
-            .filter(player => player.number === winningNums.right)
-            .map(player => ({ 
-                ...player, 
-                prize: prizeSide, 
-                type: 'right',
-                prizeType: 'Правый приз'
-            }));
-        
-        winnersList.push(...centerWinners, ...leftWinners, ...rightWinners);
-        setWinners(winnersList);
-        setGameState('finished');
-        
-        console.log('Победители:', winnersList);
-        updateUserStats(winnersList);
-    };
+        if (userWin && currentUser) {
+          const newBalance = currentUser.balance + userWin.prize;
+          const updatedUser = {
+            ...currentUser,
+            balance: newBalance,
+            gamesPlayed: (currentUser.gamesPlayed || 0) + 1,
+            gamesWon: (currentUser.gamesWon || 0) + 1,
+            totalWinnings: (currentUser.totalWinnings || 0) + userWin.prize
+          };
+          
+          setCurrentUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          
+          window.dispatchEvent(new CustomEvent('balanceUpdated', {
+            detail: { balance: newBalance }
+          }));
+          
+          alert(`🎉 Поздравляем! Вы выиграли ${userWin.prize} ⭐`);
+        } else if (currentUser) {
+          // Обновляем статистику даже при проигрыше
+          const updatedUser = {
+            ...currentUser,
+            gamesPlayed: (currentUser.gamesPlayed || 0) + 1
+          };
+          setCurrentUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Finish game error:', error);
+    // Локальная обработка если сервер не ответил
+    handleLocalGameFinish(winningNums);
+  }
+  
+  setGameState('finished');
+};
+
+// Резервная функция если сервер не отвечает
+const handleLocalGameFinish = (winningNums) => {
+  const prizeCenter = Math.floor(bankAmount * 0.5);
+  const prizeSide = Math.floor(bankAmount * 0.25);
+  
+  const winnersList = [];
+  
+  const centerWinners = players
+    .filter(player => player.number === winningNums.center)
+    .map(player => ({ 
+      ...player, 
+      prize: prizeCenter, 
+      type: 'center',
+      prizeType: 'Главный приз'
+    }));
+  
+  const leftWinners = players
+    .filter(player => player.number === winningNums.left)
+    .map(player => ({ 
+      ...player, 
+      prize: prizeSide, 
+      type: 'left',
+      prizeType: 'Левый приз'
+    }));
+  
+  const rightWinners = players
+    .filter(player => player.number === winningNums.right)
+    .map(player => ({ 
+      ...player, 
+      prize: prizeSide, 
+      type: 'right',
+      prizeType: 'Правый приз'
+    }));
+  
+  winnersList.push(...centerWinners, ...leftWinners, ...rightWinners);
+  setWinners(winnersList);
+  
+  console.log('Победители (локально):', winnersList);
+};
 
     const updateUserStats = (winnersList) => {
         const userWinnings = winnersList
@@ -1231,4 +1303,5 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
+
 
