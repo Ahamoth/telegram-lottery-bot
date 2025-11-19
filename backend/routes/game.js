@@ -72,7 +72,7 @@ module.exports = (pool) => {
     }
   });
 
-  // Join game
+  // Join game - ИСПРАВЛЕННАЯ ВЕРСИЯ
   router.post('/join', async (req, res) => {
     const client = await pool.connect();
     
@@ -89,6 +89,8 @@ module.exports = (pool) => {
         });
       }
 
+      console.log(`🎮 Попытка присоединения пользователя ${telegramId} к игре`);
+
       // Находим текущую активную игру
       const gameResult = await client.query(
         'SELECT * FROM games WHERE status = $1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE',
@@ -103,8 +105,10 @@ module.exports = (pool) => {
           ['waiting', 0]
         );
         game = newGameResult.rows[0];
+        console.log(`🆕 Создана новая игра ID: ${game.id}`);
       } else {
         game = gameResult.rows[0];
+        console.log(`🎯 Найдена существующая игра ID: ${game.id}`);
       }
       
       // Проверяем, не в игре ли уже пользователь
@@ -115,6 +119,7 @@ module.exports = (pool) => {
       
       if (existingPlayerResult.rows.length > 0) {
         await client.query('ROLLBACK');
+        console.log(`❌ Пользователь ${telegramId} уже в игре`);
         return res.status(400).json({ 
           success: false,
           error: 'Already in game' 
@@ -132,6 +137,7 @@ module.exports = (pool) => {
       
       if (availableNumbers.length === 0) {
         await client.query('ROLLBACK');
+        console.log(`❌ Игра ${game.id} заполнена`);
         return res.status(400).json({ 
           success: false,
           error: 'Game is full' 
@@ -139,6 +145,7 @@ module.exports = (pool) => {
       }
       
       const userNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
+      console.log(`🔢 Пользователю ${telegramId} назначен номер: ${userNumber}`);
       
       // Проверяем баланс пользователя
       const userResult = await client.query(
@@ -146,34 +153,39 @@ module.exports = (pool) => {
         [telegramId]
       );
       
-      if (userResult.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ 
-          success: false,
-          error: 'User not found' 
-        });
-      }
+      let userBalance = 0;
+      let userAvatar = avatar;
       
-      const userBalance = userResult.rows[0].balance;
-      const userAvatar = userResult.rows[0].avatar;
+      if (userResult.rows.length === 0) {
+        // Создаем пользователя если не существует
+        console.log(`👤 Пользователь ${telegramId} не найден, создаем...`);
+        const newUserResult = await client.query(
+          `INSERT INTO users (telegram_id, first_name, balance) 
+           VALUES ($1, $2, $3) RETURNING *`,
+          [telegramId, name || 'Player', 0]
+        );
+        userBalance = 0;
+        userAvatar = userAvatar || 'default';
+      } else {
+        userBalance = userResult.rows[0].balance;
+        userAvatar = userAvatar || userResult.rows[0].avatar || 'default';
+      }
       
       if (userBalance < 10) {
         await client.query('ROLLBACK');
+        console.log(`❌ Недостаточно баланса у пользователя ${telegramId}: ${userBalance}`);
         return res.status(400).json({ 
           success: false,
           error: 'Insufficient balance. Need 10 stars to join the game.' 
         });
       }
       
-      // Используем аватар пользователя из базы или переданный аватар
-      const finalAvatar = avatar || userAvatar || 'default';
-      
       // Добавляем игрока
       await client.query(
         `INSERT INTO game_players 
          (game_id, telegram_id, player_number, player_name, avatar, is_bot) 
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [game.id, telegramId, userNumber, name || 'Player', finalAvatar, false]
+        [game.id, telegramId, userNumber, name || 'Player', userAvatar, false]
       );
       
       // Обновляем банк
@@ -202,7 +214,7 @@ module.exports = (pool) => {
       
       const newBalance = updatedUserResult.rows[0].balance;
       
-      // Получаем обновленный список игроков с аватарами
+      // Получаем обновленный список игроков
       const playersResult = await client.query(
         `SELECT 
           id,
@@ -219,6 +231,8 @@ module.exports = (pool) => {
       
       await client.query('COMMIT');
       
+      console.log(`✅ Пользователь ${telegramId} успешно присоединился к игре ${game.id}`);
+      
       res.json({
         success: true,
         game: {
@@ -229,7 +243,7 @@ module.exports = (pool) => {
         },
         userNumber: userNumber,
         newBalance: newBalance,
-        userAvatar: finalAvatar
+        userAvatar: userAvatar
       });
       
     } catch (error) {
@@ -237,13 +251,12 @@ module.exports = (pool) => {
       console.error('❌ Join game error:', error);
       res.status(500).json({ 
         success: false,
-        error: 'Failed to join game' 
+        error: 'Failed to join game: ' + error.message 
       });
     } finally {
       client.release();
     }
   });
-
   // Start game - минимально 2 реальных игрока
   router.post('/start', async (req, res) => {
     const client = await pool.connect();
@@ -744,3 +757,4 @@ module.exports = (pool) => {
 
   return router;
 };
+
