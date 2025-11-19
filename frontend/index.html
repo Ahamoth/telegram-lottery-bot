@@ -64,16 +64,19 @@
     <script src="static/js/main.js"></script>
     
     <script>
-        // Инициализация Telegram Web App
-        if (window.Telegram && Telegram.WebApp) {
-            Telegram.WebApp.ready();
-            Telegram.WebApp.expand();
-            Telegram.WebApp.setHeaderColor('#2c2c2c');
-            Telegram.WebApp.setBackgroundColor('#667eea');
-            
-            console.log('Telegram Web App initialized');
-            console.log('User:', Telegram.WebApp.initDataUnsafe.user);
-        }
-    </script>
+  // Инициализация Telegram Web App
+  if (window.Telegram && Telegram.WebApp) {
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
+    Telegram.WebApp.setHeaderColor('#2c2c2c');
+    Telegram.WebApp.setBackgroundColor('#667eea');
+    
+    console.log('Telegram Web App initialized');
+    console.log('User:', Telegram.WebApp.initDataUnsafe?.user);
+  } else {
+    console.log('Telegram Web App not detected - running in browser mode');
+  }
+</script>
 </body>
 </html>
+
