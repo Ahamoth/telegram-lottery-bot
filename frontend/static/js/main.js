@@ -79,7 +79,17 @@ getUserProfile(id) {
       body: JSON.stringify({ telegramId, amount }) 
     }); 
   },
-  
+  // Добавьте в API объект:
+withdrawViaInvoice(telegramId, amount) { 
+  return this.request('/payment/withdraw-via-invoice', { 
+    method: 'POST', 
+    body: JSON.stringify({ telegramId, amount }) 
+  }); 
+},
+
+getWithdrawStatus(telegramId) { 
+  return this.request(`/payment/withdraw-status/${telegramId}`); 
+},
   withdrawToTonSpace(telegramId, amount) { 
     return this.request('/payment/withdraw-to-tonspace', { 
       method: 'POST', 
@@ -1303,5 +1313,6 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
+
 
 
