@@ -1,6 +1,6 @@
 const { useState, useEffect } = React;
 
-// API сервис
+// API сервис - ИСПРАВЛЕННАЯ ВЕРСИЯ
 const API = {
   baseUrl: window.location.hostname === 'localhost' 
     ? 'http://localhost:3000' 
@@ -12,15 +12,7 @@ const API = {
         headers: { 'Content-Type': 'application/json', ...options.headers },
         ...options,
       });
-getUserProfile(id) { 
-    return this.request(`/user/profile/${id}`); 
-  },
-  
-  // Добавьте этот метод для получения текущего пользователя
-  getCurrentUser(telegramId) { 
-    return this.request(`/user/current?telegramId=${telegramId}`); 
-  }
-};
+
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`HTTP ${response.status}: ${text}`);
@@ -31,6 +23,62 @@ getUserProfile(id) {
       throw err;
     }
   },
+
+  // Методы API - убедитесь, что синтаксис правильный
+  authenticate(initData) { 
+    return this.request('/auth/telegram', { 
+      method: 'POST', 
+      body: JSON.stringify({ initData }) 
+    }); 
+  },
+  
+  getCurrentGame() { 
+    return this.request('/game/current'); 
+  },
+  
+  joinGame(data) { 
+    return this.request('/game/join', { 
+      method: 'POST', 
+      body: JSON.stringify(data) 
+    }); 
+  },
+  
+  leaveGame(telegramId) { 
+    return this.request('/game/leave', { 
+      method: 'POST', 
+      body: JSON.stringify({ telegramId }) 
+    }); 
+  },
+  
+  getUserProfile(id) { 
+    return this.request(`/user/profile/${id}`); 
+  },
+  
+  getCurrentUser(telegramId) { 
+    return this.request(`/user/current?telegramId=${telegramId}`); 
+  },
+  
+  createStarsInvoiceLink(telegramId, amount) { 
+    return this.request('/payment/create-invoice-link', { 
+      method: 'POST', 
+      body: JSON.stringify({ telegramId, amount }) 
+    }); 
+  },
+  
+  withdrawToTonSpace(telegramId, amount) { 
+    return this.request('/payment/withdraw-to-tonspace', { 
+      method: 'POST', 
+      body: JSON.stringify({ telegramId, amount }) 
+    }); 
+  },
+  
+  demoPayment(telegramId, amount) { 
+    return this.request('/payment/demo-payment', { 
+      method: 'POST', 
+      body: JSON.stringify({ telegramId, amount }) 
+    }); 
+  }
+};
 
   authenticate(initData) { return this.request('/auth/telegram', { method: 'POST', body: JSON.stringify({ initData }) }); },
   getCurrentGame() { return this.request('/game/current'); },
@@ -92,10 +140,19 @@ const Header = () => {
     const loadUser = async () => {
       try {
         const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-        if (!tgUser) return;
+        if (!tgUser) {
+          console.log('No Telegram user data found');
+          return;
+        }
 
-        const res = await API.getUserProfile(tgUser.id);
-        if (res.success) setUser(res.user);
+        console.log('Loading user data for:', tgUser.id);
+        const res = await API.getUserProfile(tgUser.id.toString());
+        if (res.success) {
+          setUser(res.user);
+          console.log('User loaded:', res.user);
+        } else {
+          console.log('Failed to load user profile');
+        }
       } catch (err) {
         console.log('User load error:', err);
       }
@@ -103,37 +160,42 @@ const Header = () => {
 
     loadUser();
 
-    // Обновление баланса при изменениях
-    const handleBalanceUpdate = (event) => {
-      if (user && event.detail.balance !== undefined) {
-        setUser(prev => ({ ...prev, balance: event.detail.balance }));
-      }
-    };
-
-    window.addEventListener('balanceUpdated', handleBalanceUpdate);
-    
-    // Слушаем изменение хеша
-    const handleHash = () => {
+    // Слушаем изменение хеша для навигации
+    const handleHashChange = () => {
       const page = window.location.hash.slice(1) || 'home';
       setCurrentPage(page);
+      console.log('Page changed to:', page);
     };
 
-    window.addEventListener('hashchange', handleHash);
-    handleHash();
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // Устанавливаем начальную страницу
+    handleHashChange();
 
     return () => {
-      window.removeEventListener('hashchange', handleHash);
-      window.removeEventListener('balanceUpdated', handleBalanceUpdate);
+      window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
 
   const navigate = (page) => {
+    console.log('Navigating to:', page);
     window.location.hash = page;
   };
 
-  return React.createElement('header', { className: 'header' },
+  return React.createElement('header', { 
+    className: 'header',
+    style: { 
+      background: 'var(--bg-dark)',
+      padding: '0',
+      boxShadow: 'var(--shadow)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 1000
+    }
+  },
     // Верхняя часть с аватаром и балансом
     React.createElement('div', { 
+      className: 'header-top',
       style: { 
         display: 'flex', 
         alignItems: 'center', 
@@ -142,11 +204,22 @@ const Header = () => {
         borderBottom: '1px solid rgba(255,255,255,0.1)'
       } 
     },
-      user && React.createElement(UserAvatar, { 
+      user ? React.createElement(UserAvatar, { 
         avatar: user.avatar, 
         name: user.firstName || user.username, 
         size: 'normal' 
-      }),
+      }) : React.createElement('div', {
+        style: {
+          width: '40px',
+          height: '40px',
+          borderRadius: '50%',
+          background: 'rgba(255,255,255,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'rgba(255,255,255,0.5)'
+        }
+      }, '👤'),
       React.createElement('div', { 
         style: { 
           display: 'flex', 
@@ -160,7 +233,7 @@ const Header = () => {
             fontSize: '16px',
             color: 'white'
           } 
-        }, user?.firstName || 'Игрок'),
+        }, user?.firstName || 'Загрузка...'),
         React.createElement('div', { 
           style: { 
             fontSize: '14px',
@@ -172,18 +245,67 @@ const Header = () => {
     ),
 
     // Нижняя навигация
-    React.createElement('nav', { className: 'bottom-nav' },
+    React.createElement('nav', { 
+      className: 'bottom-nav',
+      style: {
+        display: 'flex',
+        background: 'rgba(255,255,255,0.1)',
+        borderRadius: '12px',
+        padding: '8px',
+        margin: '8px 16px 16px 16px',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255,255,255,0.1)'
+      }
+    },
       React.createElement('button', {
         className: `nav-btn ${currentPage === 'home' ? 'active' : ''}`,
-        onClick: () => navigate('home')
+        onClick: () => navigate('home'),
+        style: {
+          flex: 1,
+          padding: '12px',
+          background: currentPage === 'home' ? '#ffd700' : 'transparent',
+          border: 'none',
+          color: currentPage === 'home' ? 'black' : 'white',
+          fontSize: '14px',
+          fontWeight: '600',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          transition: 'all 0.3s'
+        }
       }, 'Главная'),
+      
       React.createElement('button', {
         className: `nav-btn ${currentPage === 'game' ? 'active' : ''}`,
-        onClick: () => navigate('game')
+        onClick: () => navigate('game'),
+        style: {
+          flex: 1,
+          padding: '12px',
+          background: currentPage === 'game' ? '#ffd700' : 'transparent',
+          border: 'none',
+          color: currentPage === 'game' ? 'black' : 'white',
+          fontSize: '14px',
+          fontWeight: '600',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          transition: 'all 0.3s'
+        }
       }, 'Играть'),
+      
       React.createElement('button', {
         className: `nav-btn ${currentPage === 'profile' ? 'active' : ''}`,
-        onClick: () => navigate('profile')
+        onClick: () => navigate('profile'),
+        style: {
+          flex: 1,
+          padding: '12px',
+          background: currentPage === 'profile' ? '#ffd700' : 'transparent',
+          border: 'none',
+          color: currentPage === 'profile' ? 'black' : 'white',
+          fontSize: '14px',
+          fontWeight: '600',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          transition: 'all 0.3s'
+        }
       }, 'Профиль')
     )
   );
