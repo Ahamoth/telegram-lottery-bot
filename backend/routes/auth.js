@@ -99,36 +99,41 @@ module.exports = (pool) => {
   };
 
   router.post('/telegram', async (req, res) => {
-  console.log('Auth request – initData length:', req.body.initData?.length || 0);
+  console.log('Auth request');
 
   try {
     const { initData } = req.body;
-
-    if (!initData) {
-      return res.status(400).json({ success: false, error: 'No initData' });
+    if (!initData || !validateTelegramData(initData)) {
+      return res.status(401).json({ success: false, error: 'Invalid data' });
     }
 
-    if (!validateTelegramData(initData)) {
-      console.log('Invalid Telegram signature');
-      return res.status(401).json({ success: false, error: 'Invalid signature' });
-    }
-
-    // ←←← ВОТ ЭТА СТРОКА БЫЛА ПОТЕРЯНА!
     const params = new URLSearchParams(initData);
-    const userParam = params.get('user');  // ← обязательно объяви!
-
-    if (!userParam) {
-      return res.status(400).json({ success: false, error: 'No user in initData' });
-    }
+    const userParam = params.get('user');
+    if (!userParam) return res.status(400).json({ success: false, error: 'No user' });
 
     const tgUser = JSON.parse(decodeURIComponent(userParam));
+
+    // ←←← НОВОЕ: запрашиваем реальное фото через бота
+    let realPhotoUrl = tgUser.photo_url || null;
+
+    if (!realPhotoUrl || realPhotoUrl.includes('.svg') || realPhotoUrl.includes('/userpic/')) {
+      try {
+        const photos =  await bot.telegram.getUserProfilePhotos(tgUser.id, { limit: 1 });
+        if (photos.total_count > 0) {
+          const file = await bot.telegram.getFile(photos.photos[0][0].file_id);
+          realPhotoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+        }
+      } catch (e) {
+        console.log('Не удалось получить фото профиля:', e.message);
+      }
+    }
 
     const user = await findOrCreateUser({
       telegramId: tgUser.id.toString(),
       firstName: tgUser.first_name || '',
       lastName: tgUser.last_name || '',
       username: tgUser.username || ''
-    }, tgUser);
+    }, realPhotoUrl);  // ← передаём реальное фото
 
     res.json({
       success: true,
@@ -141,17 +146,17 @@ module.exports = (pool) => {
         gamesPlayed: user.games_played || 0,
         gamesWon: user.games_won || 0,
         totalWinnings: user.total_winnings || 0,
-        avatar: user.avatar  // ← реальная ссылка или null
-      },
-      mode: 'telegram'
+        avatar: user.avatar || null  // ← теперь всегда настоящее фото или null
+      }
     });
 
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(500).json({ success: false, error: 'Authentication failed' });
+    res.status(500).json({ success: false, error: 'Auth failed' });
   }
 });
   return router;
 };
+
 
 
