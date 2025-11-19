@@ -1,6 +1,6 @@
 const { useState, useEffect } = React;
 
-// API сервис - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// API сервис
 const API = {
   baseUrl: window.location.hostname === 'localhost' 
     ? 'http://localhost:3000' 
@@ -24,7 +24,6 @@ const API = {
     }
   },
 
-  // Методы API
   authenticate(initData) { 
     return this.request('/auth/telegram', { 
       method: 'POST', 
@@ -121,10 +120,35 @@ const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
   }, initials);
 };
 
-// Header Component
+// Header Component - ИСПРАВЛЕННАЯ ВЕРСИЯ
 const Header = () => {
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('home');
+
+  // Функция для безопасного получения текущей страницы из хеша
+  const getCurrentPageFromHash = () => {
+    const hash = window.location.hash;
+    console.log('Current hash:', hash);
+    
+    // Если хеш пустой или содержит только #, возвращаем home
+    if (!hash || hash === '#' || hash === '#/') {
+      return 'home';
+    }
+    
+    // Пытаемся извлечь имя страницы из хеша
+    const match = hash.match(/^#\/([a-zA-Z0-9]+)/);
+    if (match && match[1]) {
+      return match[1];
+    }
+    
+    // Если хеш содержит tgWebAppData, это начальная загрузка
+    if (hash.includes('tgWebAppData')) {
+      return 'home';
+    }
+    
+    // По умолчанию возвращаем home
+    return 'home';
+  };
 
   useEffect(() => {
     const loadUser = async () => {
@@ -136,10 +160,26 @@ const Header = () => {
         }
 
         console.log('Loading user data for:', tgUser.id);
+        
+        // Сначала пробуем аутентификацию
+        try {
+          if (window.Telegram?.WebApp?.initData) {
+            const authRes = await API.authenticate(window.Telegram.WebApp.initData);
+            if (authRes.success) {
+              setUser(authRes.user);
+              console.log('User loaded from auth:', authRes.user);
+              return;
+            }
+          }
+        } catch (authErr) {
+          console.log('Auth failed, trying direct profile:', authErr);
+        }
+        
+        // Если аутентификация не сработала, пробуем напрямую профиль
         const res = await API.getUserProfile(tgUser.id.toString());
         if (res.success) {
           setUser(res.user);
-          console.log('User loaded:', res.user);
+          console.log('User loaded from profile:', res.user);
         } else {
           console.log('Failed to load user profile');
         }
@@ -150,9 +190,9 @@ const Header = () => {
 
     loadUser();
 
-    // Слушаем изменение хеша для навигации
+    // Функция для обработки изменения хеша
     const handleHashChange = () => {
-      const page = window.location.hash.slice(1) || 'home';
+      const page = getCurrentPageFromHash();
       setCurrentPage(page);
       console.log('Page changed to:', page);
     };
@@ -169,7 +209,8 @@ const Header = () => {
 
   const navigate = (page) => {
     console.log('Navigating to:', page);
-    window.location.hash = page;
+    // Используем чистый хеш без параметров
+    window.location.hash = `/${page}`;
   };
 
   return React.createElement('header', { 
@@ -389,7 +430,7 @@ const Profile = () => {
 // Home Page Component
 const Home = () => {
     const navigateTo = (page) => {
-        window.location.hash = page;
+        window.location.hash = `/${page}`;
     };
 
     return React.createElement('div', { className: 'home' },
@@ -923,20 +964,54 @@ const Game = () => {
 
 // Main App Component
 const App = () => {
+  const [currentPage, setCurrentPage] = useState('home');
+
   useEffect(() => {
     if (window.Telegram?.WebApp) {
       Telegram.WebApp.ready();
       Telegram.WebApp.expand();
     }
-  }, []);
 
-  const page = window.location.hash.slice(1) || 'home';
+    // Функция для безопасного получения текущей страницы из хеша
+    const getCurrentPageFromHash = () => {
+      const hash = window.location.hash;
+      console.log('App - Current hash:', hash);
+      
+      if (!hash || hash === '#' || hash === '#/') {
+        return 'home';
+      }
+      
+      const match = hash.match(/^#\/([a-zA-Z0-9]+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
+      
+      if (hash.includes('tgWebAppData')) {
+        return 'home';
+      }
+      
+      return 'home';
+    };
+
+    const handleHashChange = () => {
+      const page = getCurrentPageFromHash();
+      setCurrentPage(page);
+      console.log('App - Page changed to:', page);
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange();
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
 
   return React.createElement('div', { className: 'App' },
     React.createElement(Header),
     React.createElement('main', null,
-      page === 'profile' ? React.createElement(Profile) :
-      page === 'game' ? React.createElement(Game) :
+      currentPage === 'profile' ? React.createElement(Profile) :
+      currentPage === 'game' ? React.createElement(Game) :
       React.createElement(Home)
     )
   );
