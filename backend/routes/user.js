@@ -3,41 +3,45 @@ const express = require('express');
 module.exports = (pool) => {
   const router = express.Router();
 
-  // Get user profile
-  router.get('/profile/:telegramId', async (req, res) => {
-    try {
-      const { telegramId } = req.params;
-      
-      const userResult = await pool.query(
-        'SELECT * FROM users WHERE telegram_id = $1',
-        [telegramId]
-      );
-      
-      if (userResult.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      
-      const user = userResult.rows[0];
-      
-      res.json({
-        success: true,
-        user: {
-          telegramId: user.telegram_id,
-          firstName: user.first_name,
-          lastName: user.last_name,
-          username: user.username,
-          balance: user.balance,
-          gamesPlayed: user.games_played,
-          gamesWon: user.games_won,
-          totalWinnings: user.total_winnings,
-          avatar: user.avatar
-        }
-      });
-    } catch (error) {
-      console.error('Profile error:', error);
-      res.status(500).json({ error: 'Failed to get profile' });
+  // Get current user (for header)
+router.get('/current', async (req, res) => {
+  try {
+    const { telegramId } = req.query;
+    
+    if (!telegramId) {
+      return res.status(400).json({ success: false, error: 'Telegram ID is required' });
     }
-  });
+    
+    const userResult = await pool.query(
+      'SELECT * FROM users WHERE telegram_id = $1',
+      [telegramId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    res.json({
+      success: true,
+      user: {
+        telegramId: user.telegram_id,
+        firstName: user.first_name || '',
+        lastName: user.last_name || '',
+        username: user.username || '',
+        balance: user.balance || 0,
+        gamesPlayed: user.games_played || 0,
+        gamesWon: user.games_won || 0,
+        totalWinnings: user.total_winnings || 0,
+        avatar: user.avatar
+      }
+    });
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get user data' });
+  }
+});
 
   // Update user balance
   router.post('/balance', async (req, res) => {
