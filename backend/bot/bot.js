@@ -1,5 +1,6 @@
 const { Telegraf } = require('telegraf');
-
+module.exports = (pool) => {
+  const bot = new Telegraf(process.env.BOT_TOKEN);
 // Бот запускается только если есть токен
 if (!process.env.BOT_TOKEN) {
   console.log('🤖 No BOT_TOKEN provided, running in API-only mode');
@@ -273,4 +274,70 @@ bot.on('successful_payment', async (ctx) => {
 
   module.exports = bot;
 }
+// Обработка успешного платежа Stars — РАБОЧАЯ ВЕРСИЯ
+  bot.on('successful_payment', async (ctx) => {
+    const payload = ctx.message.successful_payment.invoice_payload;
+    const amount = ctx.message.successful_payment.total_amount;
+    const telegramId = ctx.from.id.toString();
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Ищем транзакцию по payload (уникальный, который мы генерировали)
+      const transRes = await client.query(
+        'SELECT * FROM transactions WHERE invoice_payload = $1 AND status = $2',
+        [payload, 'pending']
+      );
+
+      if (transRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return ctx.reply('Платёж не найден');
+      }
+
+      const transaction = transRes.rows[0];
+
+      // Обновляем транзакцию
+      await client.query(
+        `UPDATE transactions SET
+           status = 'completed',
+           telegram_payment_charge_id = $1,
+           provider_payment_charge_id = $2,
+           updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [
+          ctx.message.successful_payment.telegram_payment_charge_id,
+          ctx.message.successful_payment.provider_payment_charge_id,
+          transaction.id
+        ]
+      );
+
+      // Пополняем баланс
+      await client.query(
+        'UPDATE users SET balance = balance + $1 WHERE telegram_id = $2',
+        [amount, telegramId]
+      );
+
+      await client.query('COMMIT');
+
+      await ctx.reply(`Пополнено +${amount} ⭐!\nБаланс обновится в приложении через секунду ✅`);
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Payment processing error:', err);
+      await ctx.reply('Ошибка обработки платежа');
+    } finally {
+      client.release();
+    }
+  });
+
+  // pre_checkout — обязательно отвечаем true
+  bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
+
+  // Запуск бота
+  bot.launch();
+  console.log('Bot launched with pool access');
+
+  return bot;
+};
 
