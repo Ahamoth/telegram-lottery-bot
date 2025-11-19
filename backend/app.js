@@ -150,7 +150,7 @@ if (process.env.BOT_TOKEN) {
 }
 
 // Роуты
-app.use('/api/auth', require('./routes/auth')(pool));
+app.use('/api/auth', require('./routes/auth')(pool, bot));
 app.use('/api/game', require('./routes/game')(pool));
 app.use('/api/user', require('./routes/user')(pool));
 app.use('/api/payment', require('./routes/payment')(pool, bot));
@@ -184,4 +184,5 @@ const startServer = async () => {
 };
 
 startServer();
+
 
