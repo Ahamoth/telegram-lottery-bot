@@ -78,56 +78,59 @@ const API = {
   }
 };
 
-// Компонент для отображения аватара
-const UserAvatar = ({ avatar, size = 'normal' }) => {
-  const isDefault = avatar === 'default' || !avatar;
-  const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
-  const isTelegramSVG = typeof avatar === 'string' && avatar.includes('userpic/320/');
-  
-  const avatarStyles = {
-    width: size === 'large' ? '44px' : size === 'normal' ? '36px' : '28px',
-    height: size === 'large' ? '44px' : size === 'normal' ? '36px' : '28px',
-    borderRadius: '50%',
-    objectFit: 'cover',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: '2px solid rgba(255, 215, 0, 0.5)',
-    background: 'linear-gradient(135deg, #667eea, #764ba2)'
+// Универсальный компонент аватара с поддержкой реальных фото Telegram
+const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
+  const sizes = {
+    large: '56px',
+    normal: '40px',
+    small: '32px'
   };
 
-  if (isImageUrl && !isTelegramSVG) {
+  const fontSizes = {
+    large: '22px',
+    normal: '16px',
+    small: '13px'
+  };
+
+  // Если это настоящая ссылка от Telegram
+  if (avatar && typeof avatar === 'string' && avatar.startsWith('https://')) {
     return React.createElement('img', {
       src: avatar,
-      className: `user-avatar ${size}`,
-      style: avatarStyles,
-      alt: "User Avatar",
+      alt: name,
+      style: {
+        width: sizes[size],
+        height: sizes[size],
+        borderRadius: '50%',
+        objectFit: 'cover',
+        border: '3px solid #ffd700',
+        boxShadow: '0 0 15px rgba(255, 215, 0, 0.5)'
+      },
+      loading: 'lazy',
       onError: (e) => {
         e.target.style.display = 'none';
-        const fallback = document.createElement('div');
-        fallback.className = `user-avatar ${size} default-avatar`;
-        fallback.style.cssText = `
-          ${Object.entries(avatarStyles).map(([key, value]) => `${key}: ${value};`).join(' ')}
-          background: linear-gradient(135deg, #667eea, #764ba2);
-          color: white;
-          font-size: ${size === 'large' ? '18px' : size === 'normal' ? '16px' : '12px'};
-        `;
-        fallback.innerHTML = '👤';
-        e.target.parentNode.appendChild(fallback);
       }
     });
-  } else {
-    return React.createElement('div', {
-      className: `user-avatar ${size} default-avatar`,
-      style: {
-        ...avatarStyles,
-        background: 'linear-gradient(135deg, #667eea, #764ba2)',
-        color: 'white',
-        fontSize: size === 'large' ? '18px' : size === 'normal' ? '16px' : '12px',
-        fontWeight: 'bold'
-      }
-    }, '👤');
   }
+
+  // Заглушка с инициалами
+  const initials = name ? name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : '??';
+
+  return React.createElement('div', {
+    style: {
+      width: sizes[size],
+      height: sizes[size],
+      borderRadius: '50%',
+      background: 'linear-gradient(135deg, #667eea, #764ba2)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: 'white',
+      fontWeight: 'bold',
+      fontSize: fontSizes[size],
+      border: '3px solid #ffd700',
+      boxShadow: '0 0 15px rgba(255, 215, 0, 0.5)'
+    }
+  }, initials);
 };
 
 // Header Component
@@ -994,4 +997,5 @@ root.render(
         React.createElement(App)
     )
 );
+
 
