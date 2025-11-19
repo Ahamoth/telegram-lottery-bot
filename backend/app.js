@@ -60,7 +60,7 @@ let bot = null;
 if (process.env.BOT_TOKEN) {
   try {
     console.log('🚀 Loading Telegram bot...');
-    bot = require('./bot/bot');  // ← bot теперь существует!
+    bot = require('./bot/bot')(pool);  // ← передаём pool в бот!
     
     bot.telegram.getMe().then(info => {
       console.log(`✅ Bot @${info.username} loaded and ready`);
@@ -118,4 +118,5 @@ const startServer = async () => {
 };
 
 startServer();
+
 
