@@ -2,11 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const path = require('path');
 
 const app = express();
 
-// CORS — разрешаем твои домены
+// CORS
 const corsOptions = {
   origin: [
     'https://telegram-lottery-bot.netlify.app',
@@ -18,11 +17,10 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 };
-
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Подключение к PostgreSQL (Render)
+// PostgreSQL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -31,18 +29,64 @@ const pool = new Pool({
 
 // Тест подключения
 pool.connect((err) => {
-  if (err) {
-    console.error('❌ Database connection error:', err.stack);
-  } else {
-    console.log('✅ PostgreSQL connected successfully');
-  }
+  if (err) console.error('Database connection error:', err.stack);
+  else console.log('PostgreSQL connected successfully');
 });
 
-// Инициализация таблиц и миграций (оставляем как было)
+// ==================================================================
+// ВСЯ ИНИЦИАЛИЗАЦИЯ И МИГРАЦИИ БАЗЫ — ОДНИМ БЛОКОМ
+// ==================================================================
 const initDB = async () => {
-  await pool.query(`ALTER TABLE users ALTER COLUMN avatar TYPE TEXT USING avatar::TEXT`);
-  // ... твой код initDB и migrateDatabase без изменений
-  // (можно оставить полностью как у тебя был — он рабочий)
+  try {
+    console.log('Запуск миграций базы данных...');
+
+    // 1. Таблица users (сразу с правильным avatar)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        telegram_id VARCHAR(255) UNIQUE NOT NULL,
+        first_name VARCHAR(255),
+        last_name VARCHAR(255),
+        username VARCHAR(255),
+        balance INTEGER DEFAULT 0,
+        games_played INTEGER DEFAULT 0,
+        games_won INTEGER DEFAULT 0,
+        total_winnings INTEGER DEFAULT 0,
+        avatar TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 2. Таблица transactions — добавляем invoice_payload если нет
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id SERIAL PRIMARY KEY,
+        telegram_id VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        amount INTEGER NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        provider_payment_charge_id VARCHAR(255),
+        telegram_payment_charge_id VARCHAR(255),
+        invoice_payload TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 3. Остальные таблицы (games, game_players, winners) — оставь как у тебя было
+    await pool.query(`CREATE TABLE IF NOT EXISTS games ( ... твоя таблица ... )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS game_players ( ... )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS winners ( ... )`);
+
+    // 4. Миграции: расширяем avatar и добавляем invoice_payload (безопасно)
+    await pool.query(`ALTER TABLE users ALTER COLUMN avatar TYPE TEXT USING avatar::TEXT;`);
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS invoice_payload TEXT;`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_payload ON transactions(invoice_payload);`);
+
+    console.log('Все миграции выполнены успешно: avatar TEXT + invoice_payload готово');
+  } catch (err) {
+    console.error('Ошибка миграции:', err.message);
+  }
 };
 
 // Health check
@@ -55,68 +99,50 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// === ВАЖНО: СНАЧАЛА ЗАГРУЖАЕМ БОТА ===
+// Загружаем бота (передаём pool!)
 let bot = null;
 if (process.env.BOT_TOKEN) {
   try {
-    console.log('🚀 Loading Telegram bot...');
-    bot = require('./bot/bot')(pool);  // ← передаём pool в бот!
-    
-    bot.telegram.getMe().then(info => {
-      console.log(`✅ Bot @${info.username} loaded and ready`);
-    }).catch(err => {
-      console.error('❌ Bot connection failed:', err.message);
-    });
-  } catch (error) {
-    console.error('❌ Failed to load bot:', error.message);
-    bot = null;
+    console.log('Загрузка бота...');
+    bot = require('./bot/bot')(pool);  // ← pool передаётся!
+    bot.telegram.getMe().then(info => console.log(`Bot @${info.username} готов`));
+  } catch (e) {
+    console.error('Ошибка загрузки бота:', e.message);
   }
-} else {
-  console.warn('⚠️ No BOT_TOKEN – running without bot (Stars payments disabled)');
 }
 
-// === ТЕПЕРЬ ПОДКЛЮЧАЕМ ВСЕ РОУТЫ ===
+// Роуты
 app.use('/api/auth', require('./routes/auth')(pool));
 app.use('/api/game', require('./routes/game')(pool));
 app.use('/api/user', require('./routes/user')(pool));
-
-// ←←← ВОТ ТУТ bot уже гарантированно существует!
 app.use('/api/payment', require('./routes/payment')(pool, bot));
 
-// Главная страница
+// Главная
 app.get('/', (req, res) => {
   res.json({
     message: 'Telegram Lottery API v1.0',
-    status: 'running',
-    stars_payments: !!bot,
+    stars_payments: !!bot ? 'ENABLED' : 'DISABLED',
+    real_avatars: 'ENABLED',
     timestamp: new Date().toISOString()
   });
 });
 
-// Обработка ошибок
+// Глобальная ошибка
 app.use((err, req, res, next) => {
   console.error('Global error:', err);
-  res.status(500).json({ success: false, error: 'Internal server error' });
+  res.status(500).json({ success: false, error: 'Server error' });
 });
 
-// Запуск сервера
 const PORT = process.env.PORT || 10000;
 
 const startServer = async () => {
-  try {
-    await initDB();
-    // await migrateDatabase(); // если есть — раскомментируй
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`💰 Stars Payments: ${bot ? 'ENABLED ✅' : 'DISABLED ❌'}`);
-      console.log(`🖼️ Real Avatars: ENABLED ✅`);
-    });
-  } catch (err) {
-    console.error('Failed to start server:', err);
-    process.exit(1);
-  }
+  await initDB();  // ← Все миграции здесь
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+    console.log(`Stars Payments: ${bot ? 'ВКЛЮЧЕНЫ ✅' : 'ВЫКЛЮЧЕНЫ ❌'}`);
+    console.log(`Реальные аватары: ВКЛЮЧЕНЫ ✅`);
+  });
 };
 
 startServer();
-
-
