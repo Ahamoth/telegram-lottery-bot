@@ -1132,7 +1132,7 @@ const Game = () => {
             alert('❌ Ошибка при выходе из лобби');
         }
         
-        const newPlayers = players.filter(player => player.telegramId === tgUserData.telegramId);
+        const newPlayers = players.filter(player => player.telegramId !== tgUserData.telegramId);
         setPlayers(newPlayers);
         setBankAmount(calculateBank(newPlayers.length));
         setUserNumber(null);
