@@ -40,6 +40,7 @@ pool.connect((err) => {
 
 // Инициализация таблиц и миграций (оставляем как было)
 const initDB = async () => {
+  await pool.query(`ALTER TABLE users ALTER COLUMN avatar TYPE TEXT USING avatar::TEXT`);
   // ... твой код initDB и migrateDatabase без изменений
   // (можно оставить полностью как у тебя был — он рабочий)
 };
@@ -117,3 +118,4 @@ const startServer = async () => {
 };
 
 startServer();
+
