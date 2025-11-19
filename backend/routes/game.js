@@ -78,7 +78,7 @@ module.exports = (pool) => {
     
     try {
       await client.query('BEGIN');
-      
+      const finalAvatar = avatar || userAvatar || 'default';
       const { telegramId, name, avatar } = req.body;
       
       if (!telegramId) {
@@ -744,3 +744,4 @@ module.exports = (pool) => {
 
   return router;
 };
+
