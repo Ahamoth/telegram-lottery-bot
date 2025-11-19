@@ -99,11 +99,11 @@ const API = {
 
 // Компонент для отображения аватара
 const UserAvatar = ({ avatar, size = 'normal' }) => {
-  const isEmoji = typeof avatar === 'string' && avatar.length <= 3;
+  const isDefault = avatar === 'default' || !avatar;
   const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
   
   if (isImageUrl) {
-    // Реальное фото
+    // Реальное фото профиля
     return React.createElement('img', {
       src: avatar,
       className: `user-avatar ${size}`,
@@ -113,24 +113,44 @@ const UserAvatar = ({ avatar, size = 'normal' }) => {
         borderRadius: '50%',
         objectFit: 'cover'
       },
-      alt: "User Avatar"
+      alt: "User Avatar",
+      onError: (e) => {
+        // Если изображение не загрузилось, показываем дефолтный аватар
+        e.target.style.display = 'none';
+        const fallback = document.createElement('div');
+        fallback.className = `user-avatar ${size} default-avatar`;
+        fallback.innerHTML = '👤'; // Простой фолбэк
+        fallback.style.cssText = `
+          width: ${size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px'};
+          height: ${size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px'};
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: ${size === 'large' ? '20px' : size === 'normal' ? '16px' : '12px'};
+          border: 2px solid rgba(255, 215, 0, 0.5);
+        `;
+        e.target.parentNode.appendChild(fallback);
+      }
     });
   } else {
-    // Эмодзи аватар
+    // Дефолтный аватар (Telegram SVG или простой эмодзи)
     return React.createElement('div', {
-      className: `user-avatar ${size} emoji-avatar`,
+      className: `user-avatar ${size} default-avatar`,
       style: {
         width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
         height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
         borderRadius: '50%',
+        background: 'rgba(255, 255, 255, 0.2)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        fontSize: size === 'large' ? '24px' : size === 'normal' ? '20px' : '16px',
-        border: '2px solid rgba(255, 215, 0, 0.5)'
+        border: '2px solid rgba(255, 215, 0, 0.5)',
+        color: 'white',
+        fontSize: size === 'large' ? '20px' : size === 'normal' ? '16px' : '12px'
       }
-    }, avatar || '👤');
+    }, '👤'); // Простой эмодзи как фолбэк
   }
 };
 
@@ -1171,6 +1191,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
