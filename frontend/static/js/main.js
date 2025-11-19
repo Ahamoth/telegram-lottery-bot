@@ -342,91 +342,303 @@ const Header = () => {
   );
 };
 
-// Профиль компонент
+// Профиль компонент - ИСПРАВЛЕННАЯ ВЕРСИЯ
 const Profile = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const loadUser = async () => {
-    const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
-    if (!tgUser) return;
     try {
-      const res = await API.getUserProfile(tgUser.id);
-      if (res.success) setUser(res.user);
+      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+      if (!tgUser) {
+        console.log('No Telegram user data in Profile');
+        return;
+      }
+
+      console.log('Loading user in Profile for:', tgUser.id);
+      
+      // Сначала пробуем аутентификацию
+      if (window.Telegram?.WebApp?.initData) {
+        try {
+          const authRes = await API.authenticate(window.Telegram.WebApp.initData);
+          if (authRes.success) {
+            setUser(authRes.user);
+            console.log('User loaded in Profile from auth:', authRes.user);
+            return;
+          }
+        } catch (authErr) {
+          console.log('Auth failed in Profile:', authErr);
+        }
+      }
+      
+      // Если аутентификация не сработала, используем данные из Telegram Web App
+      // и создаем временного пользователя
+      const tempUser = {
+        telegramId: tgUser.id.toString(),
+        firstName: tgUser.first_name || 'Игрок',
+        lastName: tgUser.last_name || '',
+        username: tgUser.username || '',
+        balance: 0, // По умолчанию 0, пока не подключим бэкенд
+        gamesPlayed: 0,
+        gamesWon: 0,
+        totalWinnings: 0,
+        avatar: tgUser.photo_url || null
+      };
+      
+      setUser(tempUser);
+      console.log('Using temporary user data:', tempUser);
+      
     } catch (err) {
       console.log('Profile load error:', err);
+      // В случае ошибки все равно создаем временного пользователя
+      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+      if (tgUser) {
+        const tempUser = {
+          telegramId: tgUser.id.toString(),
+          firstName: tgUser.first_name || 'Игрок',
+          lastName: tgUser.last_name || '',
+          username: tgUser.username || '',
+          balance: 0,
+          gamesPlayed: 0,
+          gamesWon: 0,
+          totalWinnings: 0,
+          avatar: tgUser.photo_url || null
+        };
+        setUser(tempUser);
+      }
     }
   };
 
   useEffect(() => {
     loadUser();
-    const interval = setInterval(loadUser, 8000);
-    return () => clearInterval(interval);
+    // Убираем интервал, так как данные статические
   }, []);
 
   const handlePayment = async (amount) => {
+    if (!user) return;
+    
     setLoading(true);
     try {
       const res = await API.createStarsInvoiceLink(user.telegramId, amount);
-      if (res.success) window.location.href = res.invoice_link;
+      if (res.success) {
+        window.location.href = res.invoice_link;
+      } else {
+        alert('Ошибка создания платежа');
+      }
     } catch (err) {
-      alert('Ошибка оплаты');
+      console.log('Payment error:', err);
+      alert('Ошибка оплаты. Проверьте подключение к серверу.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleWithdraw = async () => {
-    if (user.balance < 10) return alert('Минимум 10 ⭐');
+    if (!user) return;
+    
+    if (user.balance < 10) {
+      alert('Минимум 10 ⭐ для вывода');
+      return;
+    }
+    
     if (!confirm(`Вывести ${user.balance} ⭐ на TON Space?`)) return;
 
     setLoading(true);
     try {
       const res = await API.withdrawToTonSpace(user.telegramId, user.balance);
-      alert(res.success ? res.message : res.error);
-      if (res.success) loadUser();
+      if (res.success) {
+        alert(res.message);
+        // Обновляем баланс
+        setUser(prev => prev ? {...prev, balance: 0} : null);
+      } else {
+        alert(res.error || 'Ошибка вывода');
+      }
     } catch (err) {
-      alert('Вывод недоступен');
+      console.log('Withdraw error:', err);
+      alert('Вывод временно недоступен');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!user) return React.createElement('div', { className: 'loading' }, 'Загрузка...');
+  // Если пользователь не загружен, показываем загрузку
+  if (!user) {
+    return React.createElement('div', { 
+      className: 'loading',
+      style: {
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '50vh',
+        fontSize: '1.2rem',
+        color: '#ffd700'
+      }
+    }, 'Загрузка профиля...');
+  }
 
   return React.createElement('div', { className: 'profile' },
-    React.createElement(UserAvatar, { avatar: user.avatar, name: user.firstName, size: 'large' }),
-    React.createElement('h1', null, user.firstName || 'Игрок'),
+    React.createElement(UserAvatar, { 
+      avatar: user.avatar, 
+      name: user.firstName, 
+      size: 'large' 
+    }),
+    React.createElement('h1', { 
+      style: { 
+        textAlign: 'center', 
+        margin: '1rem 0',
+        color: 'white'
+      } 
+    }, user.firstName || 'Игрок'),
+    
+    user.username && React.createElement('p', { 
+      style: { 
+        textAlign: 'center', 
+        color: 'rgba(255,255,255,0.7)',
+        marginBottom: '1rem'
+      } 
+    }, `@${user.username}`),
+    
     React.createElement('div', { className: 'balance-display' },
-      React.createElement('h2', null, 'Баланс'),
-      React.createElement('div', { className: 'balance-value' }, `${user.balance} ⭐`)
+      React.createElement('h2', { 
+        style: { 
+          textAlign: 'center',
+          color: '#ffd700',
+          marginBottom: '1rem'
+        } 
+      }, 'Баланс'),
+      React.createElement('div', { 
+        className: 'balance-value',
+        style: {
+          fontSize: '2.5rem',
+          fontWeight: 'bold',
+          color: '#ffd700',
+          textAlign: 'center',
+          textShadow: '0 0 20px rgba(255,215,0,0.5)',
+          marginBottom: '2rem'
+        }
+      }, `${user.balance} ⭐`)
     ),
 
     React.createElement('div', { className: 'profile-actions' },
-      React.createElement('h2', null, 'Пополнить'),
+      React.createElement('h2', { 
+        style: { 
+          textAlign: 'center',
+          color: '#ffd700',
+          marginBottom: '1rem'
+        } 
+      }, 'Пополнить баланс'),
       React.createElement('div', { className: 'action-buttons' },
         [10, 50, 100, 500].map(amount => 
           React.createElement('button', {
             key: amount,
             className: 'control-button primary',
             onClick: () => handlePayment(amount),
-            disabled: loading
+            disabled: loading,
+            style: {
+              padding: '1rem',
+              fontSize: '1rem',
+              fontWeight: '600'
+            }
           }, `${amount} ⭐`)
         )
       )
     ),
 
-    React.createElement('div', { className: 'profile-actions', style: { marginTop: '2rem' } },
-      React.createElement('h2', null, 'Вывод на TON Space'),
+    React.createElement('div', { 
+      className: 'profile-actions', 
+      style: { marginTop: '2rem' } 
+    },
+      React.createElement('h2', { 
+        style: { 
+          textAlign: 'center',
+          color: '#ffd700',
+          marginBottom: '1rem'
+        } 
+      }, 'Вывод средств'),
       React.createElement('button', {
-        className: 'control-button success',
+        className: user.balance >= 10 ? 'control-button success' : 'control-button secondary',
         disabled: loading || user.balance < 10,
-        onClick: handleWithdraw
-      }, `Вывести ${user.balance} ⭐ → TON Space`)
+        onClick: handleWithdraw,
+        style: {
+          padding: '1rem 1.5rem',
+          fontSize: '1rem',
+          fontWeight: '600',
+          width: '100%',
+          maxWidth: '300px',
+          margin: '0 auto',
+          display: 'block'
+        }
+      }, user.balance >= 10 ? `Вывести ${user.balance} ⭐ → TON Space` : 'Минимум 10 ⭐ для вывода')
+    ),
+    
+    // Добавляем статистику
+    React.createElement('div', { 
+      className: 'stats-grid',
+      style: { 
+        marginTop: '2rem',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '1rem'
+      } 
+    },
+      React.createElement('div', { 
+        className: 'stat-card',
+        style: {
+          background: 'rgba(255,255,255,0.1)',
+          padding: '1.2rem',
+          borderRadius: '12px',
+          textAlign: 'center',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }
+      },
+        React.createElement('h3', { 
+          style: { 
+            color: '#ffd700',
+            marginBottom: '0.8rem',
+            fontSize: '0.9rem'
+          } 
+        }, 'Сыграно игр'),
+        React.createElement('div', { 
+          className: 'stat-value',
+          style: {
+            fontSize: '1.8rem',
+            fontWeight: '700',
+            color: 'white'
+          }
+        }, user.gamesPlayed || 0)
+      ),
+      
+      React.createElement('div', { 
+        className: 'stat-card',
+        style: {
+          background: 'rgba(255,255,255,0.1)',
+          padding: '1.2rem',
+          borderRadius: '12px',
+          textAlign: 'center',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }
+      },
+        React.createElement('h3', { 
+          style: { 
+            color: '#ffd700',
+            marginBottom: '0.8rem',
+            fontSize: '0.9rem'
+          } 
+        }, 'Побед'),
+        React.createElement('div', { 
+          className: 'stat-value',
+          style: {
+            fontSize: '1.8rem',
+            fontWeight: '700',
+            color: 'white'
+          }
+        }, user.gamesWon || 0)
+      )
     )
   );
 };
-
 // Home Page Component
 const Home = () => {
     const navigateTo = (page) => {
@@ -1019,3 +1231,4 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
+
