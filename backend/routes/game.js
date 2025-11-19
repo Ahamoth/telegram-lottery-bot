@@ -15,7 +15,7 @@ module.exports = (pool) => {
                'telegramId', gp.telegram_id,
                'number', gp.player_number,
                'name', gp.player_name,
-               'avatar', COALESCE(gp.avatar, '👤'),
+               'avatar', COALESCE(gp.avatar, 'default'),
                'isBot', gp.is_bot
              ) ORDER BY gp.player_number
            ) FILTER (WHERE gp.id IS NOT NULL AND NOT gp.is_bot), '[]'
@@ -78,7 +78,7 @@ module.exports = (pool) => {
     
     try {
       await client.query('BEGIN');
-      const finalAvatar = avatar || userAvatar || 'default';
+      
       const { telegramId, name, avatar } = req.body;
       
       if (!telegramId) {
@@ -166,7 +166,7 @@ module.exports = (pool) => {
       }
       
       // Используем аватар пользователя из базы или переданный аватар
-      const finalAvatar = avatar || userAvatar || '👤';
+      const finalAvatar = avatar || userAvatar || 'default';
       
       // Добавляем игрока
       await client.query(
@@ -317,7 +317,7 @@ module.exports = (pool) => {
     }
   });
 
-  // Finish game with winners - НОВЫЙ ЭНДПОИНТ
+  // Finish game with winners
   router.post('/finish', async (req, res) => {
     const client = await pool.connect();
     
@@ -409,7 +409,7 @@ module.exports = (pool) => {
         winners.push({
           telegramId: winner.telegram_id,
           name: winner.player_name,
-          avatar: winner.avatar || '👤',
+          avatar: winner.avatar || 'default',
           number: winner.player_number,
           prize: prizeCenter,
           prizeType: 'Главный приз',
@@ -434,7 +434,7 @@ module.exports = (pool) => {
         winners.push({
           telegramId: winner.telegram_id,
           name: winner.player_name,
-          avatar: winner.avatar || '👤',
+          avatar: winner.avatar || 'default',
           number: winner.player_number,
           prize: prizeSide,
           prizeType: 'Левый приз',
@@ -459,7 +459,7 @@ module.exports = (pool) => {
         winners.push({
           telegramId: winner.telegram_id,
           name: winner.player_name,
-          avatar: winner.avatar || '👤',
+          avatar: winner.avatar || 'default',
           number: winner.player_number,
           prize: prizeSide,
           prizeType: 'Правый приз',
@@ -744,4 +744,3 @@ module.exports = (pool) => {
 
   return router;
 };
-
