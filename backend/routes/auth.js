@@ -4,31 +4,41 @@ const crypto = require('crypto');
 module.exports = (pool, bot) => {  // ← bot обязателен для getUserProfilePhotos
   const router = express.Router();
 
-  const validateTelegramData = (initData) => {
-    try {
-      const params = new URLSearchParams(initData);
-      const hash = params.get('hash');
-      if (!hash) return false;
+  // Замените функцию validateTelegramData в auth.js:
+const validateTelegramData = (initData) => {
+  try {
+    const urlParams = new URLSearchParams(initData);
+    const hash = urlParams.get('hash');
+    if (!hash) return false;
 
-      params.delete('hash');
-      const dataCheckString = Array.from(params.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\n');
-
-      const secretKey = crypto.createHmac('sha256', 'WebAppData')
-        .update(process.env.BOT_TOKEN)
-        .digest();
-
-      const calculatedHash = crypto.createHmac('sha256', secretKey)
-        .update(dataCheckString)
-        .digest('hex');
-
-      return calculatedHash === hash;
-    } catch {
-      return false;
+    // Создаем data_check_string
+    const dataCheckEntries = [];
+    for (const [key, value] of urlParams) {
+      if (key !== 'hash') {
+        dataCheckEntries.push(`${key}=${value}`);
+      }
     }
-  };
+    
+    // Сортируем по алфавиту
+    dataCheckEntries.sort();
+    const dataCheckString = dataCheckEntries.join('\n');
+
+    // Создаем секретный ключ
+    const secretKey = crypto.createHmac('sha256', 'WebAppData')
+      .update(process.env.BOT_TOKEN)
+      .digest();
+
+    // Вычисляем хеш
+    const calculatedHash = crypto.createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
+
+    return calculatedHash === hash;
+  } catch (error) {
+    console.error('Telegram data validation error:', error);
+    return false;
+  }
+};
 
   // === ГЛАВНАЯ ФУНКЦИЯ — СОХРАНЯЕТ РЕАЛЬНОЕ ФОТО ===
   const findOrCreateUser = async (userData, photoUrlFromTelegram) => {
@@ -125,3 +135,4 @@ module.exports = (pool, bot) => {  // ← bot обязателен для getUse
 
   return router;
 };
+
