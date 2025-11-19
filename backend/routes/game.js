@@ -147,7 +147,7 @@ module.exports = (pool) => {
       const userNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
       console.log(`🔢 Пользователю ${telegramId} назначен номер: ${userNumber}`);
       
-      // Проверяем баланс пользователя
+      // Проверяем баланс пользователя - ИСПРАВЛЕННАЯ ЧАСТЬ
       const userResult = await client.query(
         'SELECT balance, avatar FROM users WHERE telegram_id = $1',
         [telegramId]
@@ -157,26 +157,32 @@ module.exports = (pool) => {
       let userAvatar = avatar;
       
       if (userResult.rows.length === 0) {
-        // Создаем пользователя если не существует
+        // Создаем пользователя если не существует с начальным балансом 0
         console.log(`👤 Пользователь ${telegramId} не найден, создаем...`);
         const newUserResult = await client.query(
-          `INSERT INTO users (telegram_id, first_name, balance) 
-           VALUES ($1, $2, $3) RETURNING *`,
-          [telegramId, name || 'Player', 0]
+          `INSERT INTO users (telegram_id, first_name, balance, avatar) 
+           VALUES ($1, $2, $3, $4) RETURNING *`,
+          [telegramId, name || 'Player', 0, userAvatar || 'default']
         );
         userBalance = 0;
         userAvatar = userAvatar || 'default';
+        
+        console.log(`👤 Создан новый пользователь ${telegramId} с балансом 0`);
       } else {
         userBalance = userResult.rows[0].balance;
         userAvatar = userAvatar || userResult.rows[0].avatar || 'default';
+        console.log(`👤 Найден существующий пользователь ${telegramId} с балансом ${userBalance}`);
       }
       
+      // Проверяем баланс - ИСПРАВЛЕННАЯ ПРОВЕРКА
       if (userBalance < 10) {
         await client.query('ROLLBACK');
         console.log(`❌ Недостаточно баланса у пользователя ${telegramId}: ${userBalance}`);
         return res.status(400).json({ 
           success: false,
-          error: 'Insufficient balance. Need 10 stars to join the game.' 
+          error: 'Insufficient balance. Need 10 stars to join the game.',
+          currentBalance: userBalance,
+          required: 10
         });
       }
       
@@ -257,6 +263,7 @@ module.exports = (pool) => {
       client.release();
     }
   });
+
   // Start game - минимально 2 реальных игрока
   router.post('/start', async (req, res) => {
     const client = await pool.connect();
@@ -757,4 +764,3 @@ module.exports = (pool) => {
 
   return router;
 };
-
