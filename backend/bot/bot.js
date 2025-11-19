@@ -185,7 +185,65 @@ if (!process.env.BOT_TOKEN) {
     console.error('❌ Bot error:', err);
     ctx.reply('❌ Произошла ошибка. Пожалуйста, попробуйте позже.');
   });
+// Обязательно отвечаем OK на pre-checkout
+bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
 
+// Обработка успешного платежа
+bot.on('successful_payment', async (ctx) => {
+  const payload = ctx.message.successful_payment.invoice_payload; // например: stars_123
+  const amount = ctx.message.successful_payment.total_amount;
+  const telegramId = ctx.from.id.toString();
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Ищем транзакцию по payload
+    const transRes = await client.query(
+      'SELECT * FROM transactions WHERE invoice_payload = $1 AND status = $1',
+      [payload, 'pending']
+    );
+
+    if (transRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return ctx.reply('Ошибка: платёж не найден');
+    }
+
+    const transaction = transRes.rows[0];
+
+    // Обновляем транзакцию
+    await client.query(
+      `UPDATE transactions SET
+         status = 'completed',
+         telegram_payment_charge_id = $1,
+         provider_payment_charge_id = $2,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [
+        ctx.message.successful_payment.telegram_payment_charge_id,
+        ctx.message.successful_payment.provider_payment_charge_id,
+        transaction.id
+      ]
+    );
+
+    // Пополняем баланс
+    await client.query(
+      'UPDATE users SET balance = balance + $1 WHERE telegram_id = $2',
+      [amount, telegramId]
+    );
+
+    await client.query('COMMIT');
+
+    await ctx.reply(`Пополнено +${amount} ⭐!\nТекущий баланс: обновится в приложении через секунду ✅`);
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Stars payment processing error:', err);
+    await ctx.reply('Ошибка обработки платежа');
+  } finally {
+    client.release();
+  }
+});
   // Запуск бота с улучшенной обработкой ошибок
   bot.launch({
     dropPendingUpdates: true
@@ -215,3 +273,4 @@ if (!process.env.BOT_TOKEN) {
 
   module.exports = bot;
 }
+
