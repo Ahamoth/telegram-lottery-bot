@@ -213,6 +213,14 @@ React.createElement('div', { className: 'header-user' },
   React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
 );
 };
+// В PlayerCard компоненте
+React.createElement('div', { 
+  key: player.id || player.telegramId,
+  className: `player-card ${player.telegramId === currentUser?.telegramId ? 'current-user' : ''}`
+},
+  React.createElement(UserAvatar, { avatar: player.avatar, size: 'normal' }),
+  // ... остальные элементы
+);
 // Компонент для отображения аватара
 const UserAvatar = ({ avatar, size = 'normal' }) => {
   const isEmoji = typeof avatar === 'string' && avatar.length <= 3;
@@ -1195,6 +1203,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
