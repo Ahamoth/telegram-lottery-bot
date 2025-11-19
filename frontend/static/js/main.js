@@ -445,14 +445,14 @@ const Game = () => {
         console.log('Игра инициализирована');
     };
 
-    const getUserAvatar = (user) => {
-  // Если у пользователя есть аватар (из базы данных)
-  if (user.avatar && user.avatar !== 'default') {
+    // В Game компоненте
+const getUserAvatar = (user) => {
+  // Если у пользователя есть реальное фото
+  if (user.avatar && user.avatar !== 'default' && !user.avatar.includes('/i/userpic/320/')) {
     return user.avatar;
   }
   
-  // В остальных случаях - дефолтный аватар
-  return 'default';
+  return 'default'; // Дефолтный аватар
 };
 
     const joinGame = async () => {
@@ -1188,6 +1188,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
