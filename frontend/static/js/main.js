@@ -8,22 +8,33 @@ const API = {
 
   async request(endpoint, options = {}) {
     try {
-      const response = await fetch(`${this.baseUrl}/api${endpoint}`, {
-        headers: { 'Content-Type': 'application/json', ...options.headers },
+      const url = `${this.baseUrl}/api${endpoint}`;
+      console.log(`🔄 API Request: ${url}`, options);
+      
+      const response = await fetch(url, {
+        headers: { 
+          'Content-Type': 'application/json', 
+          ...options.headers 
+        },
         ...options,
       });
 
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`HTTP ${response.status}: ${text}`);
+        const errorText = await response.text();
+        console.error(`❌ API Error ${response.status}:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-      return await response.json();
+      
+      const data = await response.json();
+      console.log(`✅ API Response:`, data);
+      return data;
     } catch (err) {
-      console.error('API error:', err);
+      console.error('❌ API request failed:', err);
       throw err;
     }
   },
 
+  // Аутентификация
   authenticate(initData) { 
     return this.request('/auth/telegram', { 
       method: 'POST', 
@@ -31,6 +42,7 @@ const API = {
     }); 
   },
   
+  // Игра
   getCurrentGame() { 
     return this.request('/game/current'); 
   },
@@ -41,23 +53,7 @@ const API = {
       body: JSON.stringify(data) 
     }); 
   },
-  startGame() { 
-  return this.request('/game/start', { 
-    method: 'POST', 
-    body: JSON.stringify({}) 
-  }); 
-},
-
-finishGame(gameId, winningNumbers) { 
-  return this.request('/game/finish', { 
-    method: 'POST', 
-    body: JSON.stringify({ gameId, winningNumbers }) 
-  }); 
-},
-
-getUserProfile(id) { 
-  return this.request(`/user/current?telegramId=${id}`); 
-},
+  
   leaveGame(telegramId) { 
     return this.request('/game/leave', { 
       method: 'POST', 
@@ -65,36 +61,49 @@ getUserProfile(id) {
     }); 
   },
   
-  getUserProfile(id) { 
-    return this.request(`/user/profile/${id}`); 
+  startGame() { 
+    return this.request('/game/start', { 
+      method: 'POST', 
+      body: JSON.stringify({}) 
+    }); 
   },
   
+  finishGame(gameId, winningNumbers) { 
+    return this.request('/game/finish', { 
+      method: 'POST', 
+      body: JSON.stringify({ gameId, winningNumbers }) 
+    }); 
+  },
+
+  // Пользователь
   getCurrentUser(telegramId) { 
     return this.request(`/user/current?telegramId=${telegramId}`); 
   },
-  
+
+  // Платежи
   createStarsInvoiceLink(telegramId, amount) { 
     return this.request('/payment/create-invoice-link', { 
       method: 'POST', 
       body: JSON.stringify({ telegramId, amount }) 
     }); 
   },
-  // Добавьте в API объект:
-withdrawViaInvoice(telegramId, amount) { 
-  return this.request('/payment/withdraw-via-invoice', { 
-    method: 'POST', 
-    body: JSON.stringify({ telegramId, amount }) 
-  }); 
-},
-
-getWithdrawStatus(telegramId) { 
-  return this.request(`/payment/withdraw-status/${telegramId}`); 
-},
+  
   withdrawToTonSpace(telegramId, amount) { 
     return this.request('/payment/withdraw-to-tonspace', { 
       method: 'POST', 
       body: JSON.stringify({ telegramId, amount }) 
     }); 
+  },
+  
+  withdrawViaInvoice(telegramId, amount) { 
+    return this.request('/payment/withdraw-via-invoice', { 
+      method: 'POST', 
+      body: JSON.stringify({ telegramId, amount }) 
+    }); 
+  },
+  
+  getWithdrawStatus(telegramId) { 
+    return this.request(`/payment/withdraw-status/${telegramId}`); 
   },
   
   demoPayment(telegramId, amount) { 
@@ -1313,6 +1322,7 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
+
 
 
 
