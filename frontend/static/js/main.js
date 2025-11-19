@@ -437,6 +437,7 @@ const Game = () => {
     const [userNumber, setUserNumber] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [syncLoading, setSyncLoading] = useState(false);
 
     useEffect(() => {
         const savedUser = localStorage.getItem('user');
@@ -446,13 +447,60 @@ const Game = () => {
         }
         
         initializeGame();
+        syncGameState(); // Синхронизируем состояние при загрузке
     }, []);
+
+    // Функция синхронизации состояния игры с сервером
+    const syncGameState = async () => {
+        if (!currentUser) return;
+        
+        setSyncLoading(true);
+        try {
+            const gameData = await API.getCurrentGame();
+            console.log('Synced game data:', gameData);
+            
+            if (gameData && gameData.success) {
+                // Обновляем состояние игры с сервера
+                if (gameData.game) {
+                    setPlayers(gameData.game.players || []);
+                    setBankAmount(gameData.game.bankAmount || 0);
+                    setGameState(gameData.game.status || 'waiting');
+                    
+                    // Проверяем, находится ли текущий пользователь в игре
+                    const userInGame = gameData.game.players.find(p => 
+                        p.telegramId === currentUser.telegramId.toString()
+                    );
+                    
+                    if (userInGame) {
+                        setUserNumber(userInGame.number);
+                    } else {
+                        setUserNumber(null);
+                    }
+                    
+                    // Если игра активна или завершена, обновляем соответствующие состояния
+                    if (gameData.game.status === 'active') {
+                        // Можно добавить логику для активной игры
+                    } else if (gameData.game.status === 'finished' && gameData.game.winningNumbers) {
+                        setWinningNumbers(gameData.game.winningNumbers);
+                        setWinners(gameData.game.winners || []);
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('Sync game state failed:', error.message);
+            // Игнорируем ошибки синхронизации, используем локальное состояние
+        } finally {
+            setSyncLoading(false);
+        }
+    };
 
     const initializeGame = () => {
         setPlayers([]);
         setBankAmount(0);
         setUserNumber(null);
         setError('');
+        setWinners([]);
+        setWinningNumbers(null);
     };
 
     const getUserAvatar = (user) => {
@@ -468,8 +516,10 @@ const Game = () => {
             return;
         }
         
-        if (players.find(p => p.telegramId === currentUser?.telegramId)) {
-            setError('Вы уже в лобби!');
+        // Проверяем, не находится ли пользователь уже в игре (по данным сервера)
+        if (userNumber !== null) {
+            setError('Вы уже в лобби! Обновляю состояние...');
+            await syncGameState();
             return;
         }
         
@@ -503,19 +553,8 @@ const Game = () => {
             const result = await API.joinGame(joinData);
             
             if (result.success) {
-                const userPlayer = {
-                    id: 'current-user',
-                    telegramId: currentUser.telegramId,
-                    name: userName,
-                    number: result.userNumber,
-                    avatar: userAvatar,
-                    isBot: false
-                };
-                
-                const newPlayers = [...players, userPlayer];
-                setPlayers(newPlayers);
-                setBankAmount(result.bankAmount || newPlayers.length * 10);
-                setUserNumber(result.userNumber);
+                // Успешно присоединились - обновляем состояние
+                await syncGameState(); // Синхронизируем с сервером
                 
                 // Обновляем баланс пользователя
                 const updatedUser = { 
@@ -529,16 +568,22 @@ const Game = () => {
                     detail: { balance: updatedUser.balance }
                 }));
                 
-                setError('✅ Вы присоединились! Ваш номер: ' + result.userNumber);
+                setError('✅ Вы присоединились к игре!');
             } else {
                 setError('❌ Не удалось присоединиться к игре');
             }
         } catch (error) {
             console.error('Join game failed:', error);
-            const errorMessage = error.message.includes('400') 
-                ? '❌ Неверные данные для входа в игру. Проверьте данные пользователя.'
-                : '❌ Ошибка соединения с сервером';
-            setError(errorMessage);
+            
+            if (error.message.includes('Already in game')) {
+                // Пользователь уже в игре - синхронизируем состояние
+                setError('🔄 Вы уже в игре! Обновляю состояние...');
+                await syncGameState();
+            } else if (error.message.includes('400')) {
+                setError('❌ Неверные данные для входа в игру. Проверьте данные пользователя.');
+            } else {
+                setError('❌ Ошибка соединения с сервером');
+            }
         } finally {
             setLoading(false);
         }
@@ -562,19 +607,29 @@ const Game = () => {
                     detail: { balance: newBalance }
                 }));
                 
+                // Обновляем локальное состояние
+                const newPlayers = players.filter(p => p.telegramId !== currentUser.telegramId);
+                setPlayers(newPlayers);
+                setBankAmount(newPlayers.length * 10);
+                setUserNumber(null);
+                
                 setError('✅ Вы покинули лобби. Возвращено 10 ⭐');
             }
         } catch (error) {
             console.error('Leave game failed:', error);
-            setError('❌ Ошибка при выходе из лобби');
+            
+            if (error.message.includes('Not in game')) {
+                // Пользователь уже не в игре - обновляем состояние
+                setUserNumber(null);
+                const newPlayers = players.filter(p => p.telegramId !== currentUser.telegramId);
+                setPlayers(newPlayers);
+                setError('✅ Вы уже не в игре');
+            } else {
+                setError('❌ Ошибка при выходе из лобби');
+            }
         } finally {
             setLoading(false);
         }
-        
-        const newPlayers = players.filter(p => p.telegramId !== currentUser.telegramId);
-        setPlayers(newPlayers);
-        setBankAmount(newPlayers.length * 10);
-        setUserNumber(null);
     };
 
     const startGame = async () => {
@@ -594,12 +649,15 @@ const Game = () => {
                 setWinners([]);
                 setWinningNumbers(null);
                 setError('');
+                
+                // Синхронизируем состояние после начала игры
+                setTimeout(() => syncGameState(), 1000);
             } else {
                 setError('❌ Не удалось начать игру');
             }
         } catch (error) {
             console.error('Start game failed:', error);
-            setError('❌ Ошибка при запуске игры');
+            setError('❌ Ошибка при запуске игры: ' + error.message);
         } finally {
             setLoading(false);
         }
@@ -645,6 +703,9 @@ const Game = () => {
         setGameState('finished');
         
         updateUserStats(winnersList);
+        
+        // Синхронизируем с сервером после завершения игры
+        setTimeout(() => syncGameState(), 2000);
     };
 
     const updateUserStats = (winnersList) => {
@@ -688,21 +749,47 @@ const Game = () => {
         setUserNumber(null);
         setError('');
         initializeGame();
+        
+        // Синхронизируем с сервером
+        setTimeout(() => syncGameState(), 500);
     };
 
-    const isUserInGame = players.some(p => p.telegramId === currentUser?.telegramId);
+    const handleSyncGame = async () => {
+        setError('🔄 Обновляю состояние игры...');
+        await syncGameState();
+        setError('✅ Состояние игры обновлено!');
+    };
+
+    const isUserInGame = userNumber !== null;
     const realPlayersCount = players.filter(p => !p.isBot).length;
 
     return React.createElement('div', { className: 'game-page' },
+        // Кнопка принудительной синхронизации
+        React.createElement('div', { style: { textAlign: 'center', marginBottom: '0.5rem' } },
+            React.createElement('button', {
+                onClick: handleSyncGame,
+                disabled: syncLoading,
+                style: {
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    color: 'white',
+                    padding: '0.4rem 0.8rem',
+                    borderRadius: '8px',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer'
+                }
+            }, syncLoading ? '🔄 Синхронизация...' : '🔄 Обновить состояние')
+        ),
+
         error && React.createElement('div', { 
             style: { 
-                background: error.includes('✅') || error.includes('🎉') 
+                background: error.includes('✅') || error.includes('🎉') || error.includes('🔄')
                     ? 'rgba(76, 175, 80, 0.2)' 
                     : 'rgba(255, 107, 107, 0.2)',
-                border: error.includes('✅') || error.includes('🎉')
+                border: error.includes('✅') || error.includes('🎉') || error.includes('🔄')
                     ? '1px solid #4caf50'
                     : '1px solid #ff6b6b',
-                color: error.includes('✅') || error.includes('🎉')
+                color: error.includes('✅') || error.includes('🎉') || error.includes('🔄')
                     ? '#4caf50'
                     : '#ff6b6b',
                 padding: '0.8rem',
@@ -744,7 +831,7 @@ const Game = () => {
                         }, loading ? 'Подключение...' : players.length >= 10 ? 'Лобби заполнено' : `Присоединиться (10 ⭐)`) :
                         React.createElement('div', null,
                             React.createElement('p', { style: { color: '#4caf50', marginBottom: '1rem' } }, 
-                                '✅ Вы в игре!'
+                                '✅ Вы в игре! Ожидаем других игроков...'
                             ),
                             React.createElement('button', { 
                                 className: 'control-button secondary',
@@ -863,7 +950,7 @@ const Game = () => {
     );
 };
 
-// Compact Profile Component
+// Compact Profile Component (остается без изменений)
 const Profile = () => {
     const [user, setUser] = useState(null);
     const [stats, setStats] = useState({
@@ -1012,7 +1099,7 @@ const Profile = () => {
     );
 };
 
-// Main App Component
+// Main App Component (остается без изменений)
 const App = () => {
     const [currentPage, setCurrentPage] = useState('home');
     const [isInitialized, setIsInitialized] = useState(false);
@@ -1059,7 +1146,7 @@ const App = () => {
     );
 };
 
-// Error Boundary
+// Error Boundary (остается без изменений)
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
