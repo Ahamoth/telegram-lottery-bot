@@ -3,7 +3,7 @@ const express = require('express');
 module.exports = (pool) => {
   const router = express.Router();
 
-  // Get current user (for header)
+  // Get current user for header
 router.get('/current', async (req, res) => {
   try {
     const { telegramId } = req.query;
