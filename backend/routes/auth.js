@@ -99,20 +99,21 @@ module.exports = (pool) => {
   };
 
   router.post('/telegram', async (req, res) => {
-    console.log('Auth request received');
-    
-    try {
-      const { initData } = req.body;
-      
-      if (!initData || !validateTelegramData(initData)) {
-        return res.status(401).json({ success: false, error: 'Invalid Telegram data' });
-      }
+  console.log('Auth request – initData length:', req.body.initData?.length);
 
-      const params = new URLSearchParams(initData);
-      const userParam = params.get('user');
-      if (!userParam) {
-        return res.status(401).json({ success: false, error: 'No user data' });
-      }
+  try {
+    const { initData } = req.body;
+    if (!initData) return res.status(400).json({ success: false, error: 'No initData' });
+
+    if (!process.env.BOT_TOKEN) {
+      console.error('BOT_TOKEN missing!');
+      return res.status(500).json({ success: false, error: 'Server config error' });
+    }
+
+    if (!validateTelegramData(initData)) {
+      console.log('Invalid Telegram signature');
+      return res.status(401).json({ success: false, error: 'Invalid signature' });
+    }
 
       const tgUser = JSON.parse(decodeURIComponent(userParam));
 
@@ -147,3 +148,4 @@ module.exports = (pool) => {
 
   return router;
 };
+
