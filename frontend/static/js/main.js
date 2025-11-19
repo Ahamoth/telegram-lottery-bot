@@ -12,7 +12,15 @@ const API = {
         headers: { 'Content-Type': 'application/json', ...options.headers },
         ...options,
       });
-
+getUserProfile(id) { 
+    return this.request(`/user/profile/${id}`); 
+  },
+  
+  // Добавьте этот метод для получения текущего пользователя
+  getCurrentUser(telegramId) { 
+    return this.request(`/user/current?telegramId=${telegramId}`); 
+  }
+};
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`HTTP ${response.status}: ${text}`);
@@ -75,52 +83,95 @@ const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
   }, initials);
 };
 
-// Хедер с РАБОЧИМИ кнопками
+// Header Component - ИСПРАВЛЕННАЯ ВЕРСИЯ
 const Header = () => {
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('home');
 
   useEffect(() => {
-    const init = async () => {
-      if (!window.Telegram?.WebApp?.initData) return;
+    const loadUser = async () => {
       try {
-        const res = await API.authenticate(window.Telegram.WebApp.initData);
-        if (res.success) setUser(res.user);
-      } catch (err) {}
-    };
-    init();
+        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+        if (!tgUser) return;
 
-    // Слушаем изменение хеша и обновляем состояние
+        const res = await API.getUserProfile(tgUser.id);
+        if (res.success) setUser(res.user);
+      } catch (err) {
+        console.log('User load error:', err);
+      }
+    };
+
+    loadUser();
+
+    // Обновление баланса при изменениях
+    const handleBalanceUpdate = (event) => {
+      if (user && event.detail.balance !== undefined) {
+        setUser(prev => ({ ...prev, balance: event.detail.balance }));
+      }
+    };
+
+    window.addEventListener('balanceUpdated', handleBalanceUpdate);
+    
+    // Слушаем изменение хеша
     const handleHash = () => {
       const page = window.location.hash.slice(1) || 'home';
       setCurrentPage(page);
     };
 
     window.addEventListener('hashchange', handleHash);
-    handleHash(); // сразу при загрузке
+    handleHash();
 
-    return () => window.removeEventListener('hashchange', handleHash);
+    return () => {
+      window.removeEventListener('hashchange', handleHash);
+      window.removeEventListener('balanceUpdated', handleBalanceUpdate);
+    };
   }, []);
 
   const navigate = (page) => {
-    window.location.hash = page; // это вызовет handleHash и перерисует
+    window.location.hash = page;
   };
 
   return React.createElement('header', { className: 'header' },
-    // Верхняя часть — аватар и баланс
-    React.createElement('div', { className: 'top-bar' },
+    // Верхняя часть с аватаром и балансом
+    React.createElement('div', { 
+      style: { 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '12px',
+        padding: '12px 16px',
+        borderBottom: '1px solid rgba(255,255,255,0.1)'
+      } 
+    },
       user && React.createElement(UserAvatar, { 
         avatar: user.avatar, 
         name: user.firstName || user.username, 
-        size: 'large' 
+        size: 'normal' 
       }),
-      React.createElement('div', { className: 'user-info' },
-        React.createElement('div', { className: 'user-name' }, user?.firstName || 'Игрок'),
-        React.createElement('div', { className: 'user-balance' }, user ? `${user.balance} ⭐` : '0 ⭐')
+      React.createElement('div', { 
+        style: { 
+          display: 'flex', 
+          flexDirection: 'column',
+          flex: 1
+        } 
+      },
+        React.createElement('div', { 
+          style: { 
+            fontWeight: '600', 
+            fontSize: '16px',
+            color: 'white'
+          } 
+        }, user?.firstName || 'Игрок'),
+        React.createElement('div', { 
+          style: { 
+            fontSize: '14px',
+            color: '#ffd700',
+            fontWeight: '600'
+          } 
+        }, user ? `${user.balance} ⭐` : '0 ⭐')
       )
     ),
 
-    // Нижняя навигация — РАБОЧИЕ КНОПКИ
+    // Нижняя навигация
     React.createElement('nav', { className: 'bottom-nav' },
       React.createElement('button', {
         className: `nav-btn ${currentPage === 'home' ? 'active' : ''}`,
