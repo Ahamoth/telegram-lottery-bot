@@ -101,36 +101,38 @@ const API = {
 const UserAvatar = ({ avatar, size = 'normal' }) => {
   const isDefault = avatar === 'default' || !avatar;
   const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
+  const isTelegramSVG = typeof avatar === 'string' && avatar.includes('userpic/320/');
   
-  if (isImageUrl) {
-    // Реальное фото профиля
+  const avatarStyles = {
+    width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+    height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '2px solid rgba(255, 215, 0, 0.5)'
+  };
+
+  if (isImageUrl && !isTelegramSVG) {
+    // Реальное фото профиля (JPEG/PNG)
     return React.createElement('img', {
       src: avatar,
       className: `user-avatar ${size}`,
-      style: {
-        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        borderRadius: '50%',
-        objectFit: 'cover'
-      },
+      style: avatarStyles,
       alt: "User Avatar",
       onError: (e) => {
         // Если изображение не загрузилось, показываем дефолтный аватар
         e.target.style.display = 'none';
         const fallback = document.createElement('div');
         fallback.className = `user-avatar ${size} default-avatar`;
-        fallback.innerHTML = '👤'; // Простой фолбэк
         fallback.style.cssText = `
-          width: ${size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px'};
-          height: ${size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px'};
-          border-radius: 50%;
-          background: rgba(255, 255, 255, 0.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          ${Object.entries(avatarStyles).map(([key, value]) => `${key}: ${value};`).join(' ')}
+          background: linear-gradient(135deg, #667eea, #764ba2);
+          color: white;
           font-size: ${size === 'large' ? '20px' : size === 'normal' ? '16px' : '12px'};
-          border: 2px solid rgba(255, 215, 0, 0.5);
         `;
+        fallback.innerHTML = '👤';
         e.target.parentNode.appendChild(fallback);
       }
     });
@@ -139,18 +141,13 @@ const UserAvatar = ({ avatar, size = 'normal' }) => {
     return React.createElement('div', {
       className: `user-avatar ${size} default-avatar`,
       style: {
-        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-        borderRadius: '50%',
-        background: 'rgba(255, 255, 255, 0.2)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        border: '2px solid rgba(255, 215, 0, 0.5)',
+        ...avatarStyles,
+        background: 'linear-gradient(135deg, #667eea, #764ba2)',
         color: 'white',
-        fontSize: size === 'large' ? '20px' : size === 'normal' ? '16px' : '12px'
+        fontSize: size === 'large' ? '20px' : size === 'normal' ? '16px' : '12px',
+        fontWeight: 'bold'
       }
-    }, '👤'); // Простой эмодзи как фолбэк
+    }, '👤');
   }
 };
 
@@ -1191,6 +1188,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
