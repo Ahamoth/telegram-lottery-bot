@@ -248,7 +248,7 @@ const Header = () => {
         ),
         React.createElement('div', { className: 'header-user' },
             React.createElement(UserAvatar, { avatar: userAvatar, size: 'normal' }),
-            React.createElement('div', { className: 'balance' }, `Баланс: ${balance} ⭐`)
+            React.createElement('div', { className: 'balance' }, `Баланс: ${balance}`)
         )
     );
 };
@@ -1191,6 +1191,7 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
 
