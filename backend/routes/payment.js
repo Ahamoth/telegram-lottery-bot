@@ -90,6 +90,70 @@ module.exports = (pool, bot) => {
       res.status(500).json({ success: false });
     }
   });
+// Вывод Stars пользователю на TON Space (Telegram Wallet)
+router.post('/withdraw-to-tonspace', async (req, res) => {
+  const { telegramId, amount } = req.body;
 
+  if (!telegramId || !amount || amount < 10) {
+    return res.status(400).json({ success: false, error: 'Минимум 10 ⭐' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Проверяем баланс
+    const userRes = await client.query(
+      'SELECT balance FROM users WHERE telegram_id = $1 FOR UPDATE',
+      [telegramId]
+    );
+
+    if (userRes.rows.length === 0 || userRes.rows[0].balance < amount) {
+      throw new Error('Недостаточно ⭐ на балансе');
+    }
+
+    // Списываем с внутреннего баланса игры
+    await client.query(
+      'UPDATE users SET balance = balance - $1 WHERE telegram_id = $2',
+      [amount, telegramId]
+    );
+
+    // Записываем транзакцию
+    await client.query(
+      `INSERT INTO transactions (telegram_id, type, amount, status) 
+       VALUES ($1, 'withdraw_tonspace', $2, 'completed')`,
+      [telegramId, amount]
+    );
+
+    await client.query('COMMIT');
+
+    // ВЫВОДИМ ПОЛЬЗОВАТЕЛЮ НА ЕГО TON SPACE
+    await bot.telegram.transferStars(
+      telegramId,
+      BigInt(amount) * 1000000000n  // 1 ⭐ = 1_000_000_000 нано-звёзд
+    );
+
+    res.json({ 
+      success: true, 
+      message: `${amount} ⭐ мгновенно зачислено на твой Telegram Wallet (TON Space)! ⭐` 
+    });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Вывод на TON Space ошибка:', err.message);
+
+    // Если transferStars ещё не разблокирован — говорим пользователю
+    if (err.message.includes('STARS_TRANSFER_NOT_AVAILABLE')) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Вывод временно недоступен. Подожди первой оплаты в приложении (разблокируется через 0–48 часов)' 
+      });
+    }
+
+    res.status(500).json({ success: false, error: 'Ошибка вывода. Попробуй позже.' });
+  } finally {
+    client.release();
+  }
+});
   return router;
 };
