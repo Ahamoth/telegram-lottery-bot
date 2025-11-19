@@ -231,7 +231,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/auth', require('./routes/auth')(pool));
 app.use('/api/game', require('./routes/game')(pool));
 app.use('/api/user', require('./routes/user')(pool));
-app.use('/api/payment', require('./routes/payment')(pool));
+app.use('/api/payment', require('./routes/payment')(pool, bot));
 
 // Serve frontend
 app.get('/', (req, res) => {
@@ -310,5 +310,6 @@ const startServer = async () => {
 };
 
 startServer();
+
 
 
