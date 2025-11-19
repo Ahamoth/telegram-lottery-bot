@@ -34,7 +34,6 @@ const API = {
     }
   },
 
-  // Аутентификация
   authenticate(initData) { 
     return this.request('/auth/telegram', { 
       method: 'POST', 
@@ -42,7 +41,6 @@ const API = {
     }); 
   },
   
-  // Игра
   getCurrentGame() { 
     return this.request('/game/current'); 
   },
@@ -75,12 +73,10 @@ const API = {
     }); 
   },
 
-  // Пользователь
   getCurrentUser(telegramId) { 
     return this.request(`/user/current?telegramId=${telegramId}`); 
   },
 
-  // Платежи
   createStarsInvoiceLink(telegramId, amount) { 
     return this.request('/payment/create-invoice-link', { 
       method: 'POST', 
@@ -155,43 +151,24 @@ const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
   }, initials);
 };
 
-// Header Component - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Header Component
 const Header = () => {
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('home');
 
-  // Функция для безопасного получения текущей страницы из хеша
   const getCurrentPageFromHash = () => {
     const hash = window.location.hash;
-    console.log('Current hash:', hash);
-    
-    // Если хеш пустой или содержит только #, возвращаем home
-    if (!hash || hash === '#' || hash === '#/') {
-      return 'home';
-    }
-    
-    // Пытаемся извлечь имя страницы из хеша
+    if (!hash || hash === '#' || hash === '#/') return 'home';
     const match = hash.match(/^#\/([a-zA-Z0-9]+)/);
-    if (match && match[1]) {
-      return match[1];
-    }
-    
-    // Если хеш содержит tgWebAppData, это начальная загрузка
-    if (hash.includes('tgWebAppData')) {
-      return 'home';
-    }
-    
-    // По умолчанию возвращаем home
+    if (match && match[1]) return match[1];
+    if (hash.includes('tgWebAppData')) return 'home';
     return 'home';
   };
 
-  // Функция для получения реальных данных пользователя из Telegram
   const getTelegramUserData = () => {
     try {
-      // Способ 1: Через Telegram WebApp
       if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
         const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
-        console.log('📱 Telegram WebApp user data:', tgUser);
         return {
           telegramId: tgUser.id?.toString(),
           firstName: tgUser.first_name || 'Игрок',
@@ -200,35 +177,8 @@ const Header = () => {
           avatar: tgUser.photo_url || null
         };
       }
-
-      // Способ 2: Через initData строку
-      if (window.Telegram?.WebApp?.initData) {
-        const params = new URLSearchParams(window.Telegram.WebApp.initData);
-        const userJson = params.get('user');
-        if (userJson) {
-          const tgUser = JSON.parse(userJson);
-          console.log('📱 Telegram initData user:', tgUser);
-          return {
-            telegramId: tgUser.id?.toString(),
-            firstName: tgUser.first_name || 'Игрок',
-            lastName: tgUser.last_name || '',
-            username: tgUser.username || '',
-            avatar: tgUser.photo_url || null
-          };
-        }
-      }
-
-      // Способ 3: Демо-режим (только для разработки)
-      console.warn('⚠️ Telegram data not found, using demo mode');
-      return {
-        telegramId: 'demo-user',
-        firstName: 'Demo User',
-        username: 'demo',
-        avatar: null
-      };
-
+      return null;
     } catch (error) {
-      console.error('Error getting Telegram user data:', error);
       return null;
     }
   };
@@ -236,38 +186,24 @@ const Header = () => {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        // Получаем данные пользователя из Telegram
         const tgUserData = getTelegramUserData();
-        if (!tgUserData) {
-          console.log('No Telegram user data found');
-          return;
-        }
+        if (!tgUserData) return;
 
-        console.log('Loading user data for:', tgUserData.telegramId);
-        
-        // Сначала пробуем аутентификацию
         try {
           if (window.Telegram?.WebApp?.initData) {
             const authRes = await API.authenticate(window.Telegram.WebApp.initData);
             if (authRes.success) {
               setUser(authRes.user);
-              console.log('User loaded from auth:', authRes.user);
               return;
             }
           }
-        } catch (authErr) {
-          console.log('Auth failed, trying direct profile:', authErr);
-        }
-        
-        // Если аутентификация не сработала, пробуем напрямую профиль
+        } catch (authErr) {}
+
         try {
           const res = await API.getCurrentUser(tgUserData.telegramId);
           if (res.success) {
             setUser(res.user);
-            console.log('User loaded from profile:', res.user);
           } else {
-            console.log('Failed to load user profile, using Telegram data');
-            // Используем данные из Telegram как временные
             setUser({
               ...tgUserData,
               balance: 0,
@@ -277,8 +213,6 @@ const Header = () => {
             });
           }
         } catch (profileErr) {
-          console.log('Profile load error, using Telegram data:', profileErr);
-          // Используем данные из Telegram как временные
           setUser({
             ...tgUserData,
             balance: 0,
@@ -294,26 +228,17 @@ const Header = () => {
 
     loadUser();
 
-    // Функция для обработки изменения хеша
     const handleHashChange = () => {
-      const page = getCurrentPageFromHash();
-      setCurrentPage(page);
-      console.log('Page changed to:', page);
+      setCurrentPage(getCurrentPageFromHash());
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    
-    // Устанавливаем начальную страницу
     handleHashChange();
 
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-    };
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const navigate = (page) => {
-    console.log('Navigating to:', page);
-    // Используем чистый хеш без параметров
     window.location.hash = `/${page}`;
   };
 
@@ -328,7 +253,6 @@ const Header = () => {
       zIndex: 1000
     }
   },
-    // Верхняя часть с аватаром и балансом
     React.createElement('div', { 
       className: 'header-top',
       style: { 
@@ -379,7 +303,6 @@ const Header = () => {
       )
     ),
 
-    // Нижняя навигация
     React.createElement('nav', { 
       className: 'bottom-nav',
       style: {
@@ -446,12 +369,11 @@ const Header = () => {
   );
 };
 
-// Профиль компонент - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Профиль компонент
 const Profile = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Функция для получения реальных данных пользователя из Telegram
   const getTelegramUserData = () => {
     try {
       if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
@@ -466,7 +388,6 @@ const Profile = () => {
       }
       return null;
     } catch (error) {
-      console.error('Error getting Telegram user data:', error);
       return null;
     }
   };
@@ -474,64 +395,44 @@ const Profile = () => {
   const loadUser = async () => {
     try {
       const tgUserData = getTelegramUserData();
-      if (!tgUserData) {
-        console.log('No Telegram user data in Profile');
-        return;
-      }
+      if (!tgUserData) return;
 
-      console.log('Loading user in Profile for:', tgUserData.telegramId);
-      
-      // Сначала пробуем аутентификацию
       if (window.Telegram?.WebApp?.initData) {
         try {
           const authRes = await API.authenticate(window.Telegram.WebApp.initData);
           if (authRes.success) {
             setUser(authRes.user);
-            console.log('User loaded in Profile from auth:', authRes.user);
             return;
           }
-        } catch (authErr) {
-          console.log('Auth failed in Profile:', authErr);
-        }
+        } catch (authErr) {}
       }
       
-      // Пробуем загрузить профиль с сервера
       try {
         const res = await API.getCurrentUser(tgUserData.telegramId);
         if (res.success) {
           setUser(res.user);
-          console.log('User loaded in Profile from API:', res.user);
           return;
         }
-      } catch (apiErr) {
-        console.log('API profile load failed:', apiErr);
-      }
+      } catch (apiErr) {}
       
-      // Если все остальное не сработало, используем данные из Telegram
-      const tempUser = {
+      setUser({
         ...tgUserData,
         balance: 0,
         gamesPlayed: 0,
         gamesWon: 0,
         totalWinnings: 0
-      };
-      
-      setUser(tempUser);
-      console.log('Using temporary user data:', tempUser);
+      });
       
     } catch (err) {
-      console.log('Profile load error:', err);
-      // В случае ошибки пробуем получить базовые данные из Telegram
       const tgUserData = getTelegramUserData();
       if (tgUserData) {
-        const tempUser = {
+        setUser({
           ...tgUserData,
           balance: 0,
           gamesPlayed: 0,
           gamesWon: 0,
           totalWinnings: 0
-        };
-        setUser(tempUser);
+        });
       }
     }
   };
@@ -552,8 +453,7 @@ const Profile = () => {
         alert('Ошибка создания платежа');
       }
     } catch (err) {
-      console.log('Payment error:', err);
-      alert('Ошибка оплаты. Проверьте подключение к серверу.');
+      alert('Ошибка оплаты');
     } finally {
       setLoading(false);
     }
@@ -574,20 +474,17 @@ const Profile = () => {
       const res = await API.withdrawToTonSpace(user.telegramId, user.balance);
       if (res.success) {
         alert(res.message);
-        // Обновляем баланс
         setUser(prev => prev ? {...prev, balance: 0} : null);
       } else {
         alert(res.error || 'Ошибка вывода');
       }
     } catch (err) {
-      console.log('Withdraw error:', err);
       alert('Вывод временно недоступен');
     } finally {
       setLoading(false);
     }
   };
 
-  // Если пользователь не загружен, показываем загрузку
   if (!user) {
     return React.createElement('div', { 
       className: 'loading',
@@ -697,7 +594,6 @@ const Profile = () => {
       }, user.balance >= 10 ? `Вывести ${user.balance} ⭐ → TON Space` : 'Минимум 10 ⭐ для вывода')
     ),
     
-    // Добавляем статистику
     React.createElement('div', { 
       className: 'stats-grid',
       style: { 
@@ -822,12 +718,6 @@ const Roulette = ({ onSpinComplete }) => {
         const leftNumber = winningNumber === 1 ? 10 : winningNumber - 1;
         const rightNumber = winningNumber === 10 ? 1 : winningNumber + 1;
         
-        console.log('Выигрышные номера:', {
-            center: winningNumber,
-            left: leftNumber,
-            right: rightNumber
-        });
-        
         const sectorAngle = 36;
         const targetAngle = 180 - ((winningNumber - 1) * sectorAngle);
         const fullRotations = 5;
@@ -837,7 +727,6 @@ const Roulette = ({ onSpinComplete }) => {
         
         setTimeout(() => {
             setIsSpinning(false);
-            
             if (onSpinComplete) {
                 onSpinComplete({
                     center: winningNumber,
@@ -893,7 +782,7 @@ const Roulette = ({ onSpinComplete }) => {
     );
 };
 
-// Game Component - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Game Component
 const Game = () => {
     const [players, setPlayers] = useState([]);
     const [gameState, setGameState] = useState('waiting');
@@ -905,12 +794,10 @@ const Game = () => {
     const [userNumber, setUserNumber] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    // Функция для получения реальных данных пользователя из Telegram
     const getTelegramUserData = () => {
         try {
             if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
                 const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
-                console.log('🎮 Telegram user data in Game:', tgUser);
                 return {
                     telegramId: tgUser.id?.toString(),
                     firstName: tgUser.first_name || 'Игрок',
@@ -921,7 +808,6 @@ const Game = () => {
             }
             return null;
         } catch (error) {
-            console.error('Error getting Telegram user data in Game:', error);
             return null;
         }
     };
@@ -930,21 +816,13 @@ const Game = () => {
         const initializeUser = async () => {
             try {
                 const tgUserData = getTelegramUserData();
-                if (!tgUserData) {
-                    console.log('No Telegram user data in Game');
-                    return;
-                }
+                if (!tgUserData) return;
 
-                console.log('🎮 Initializing user in Game:', tgUserData.telegramId);
-
-                // Пробуем загрузить пользователя через API
                 try {
                     const res = await API.getCurrentUser(tgUserData.telegramId);
                     if (res.success) {
                         setCurrentUser(res.user);
-                        console.log('User loaded in Game:', res.user);
                     } else {
-                        // Используем Telegram данные как временные
                         setCurrentUser({
                             ...tgUserData,
                             balance: 0,
@@ -954,7 +832,6 @@ const Game = () => {
                         });
                     }
                 } catch (err) {
-                    console.log('API user load failed, using Telegram data');
                     setCurrentUser({
                         ...tgUserData,
                         balance: 0,
@@ -964,7 +841,7 @@ const Game = () => {
                     });
                 }
             } catch (error) {
-                console.error('Error initializing user in Game:', error);
+                console.error('Error initializing user:', error);
             }
         };
 
@@ -1009,7 +886,6 @@ const Game = () => {
       if (user.avatar && user.avatar !== 'default' && !user.avatar.includes('/i/userpic/320/')) {
         return user.avatar;
       }
-      
       return 'default';
     };
 
@@ -1019,14 +895,12 @@ const Game = () => {
             return;
         }
         
-        // Получаем актуальные данные пользователя из Telegram
         const tgUserData = getTelegramUserData();
         if (!tgUserData) {
             alert('❌ Ошибка: не удалось получить данные пользователя');
             return;
         }
 
-        // Проверяем, что у нас реальный telegramId, а не demo-user
         if (tgUserData.telegramId === 'demo-user') {
             alert('❌ Ошибка: приложение запущено в демо-режиме. Запустите через Telegram бота.');
             return;
@@ -1052,15 +926,9 @@ const Game = () => {
         try {
             const userAvatar = getUserAvatar(currentUser);
             const userName = currentUser.firstName || 'Игрок';
-            
-            console.log(`🎮 Отправка запроса join для пользователя:`, {
-                telegramId: tgUserData.telegramId,
-                name: userName,
-                avatar: userAvatar
-            });
 
             const result = await API.joinGame({
-                telegramId: tgUserData.telegramId, // Используем реальный telegramId
+                telegramId: tgUserData.telegramId,
                 name: userName,
                 avatar: userAvatar
             });
@@ -1094,7 +962,6 @@ const Game = () => {
         } catch (error) {
             console.error('Join game failed:', error);
             
-            // Более информативные сообщения об ошибках
             if (error.message.includes('Insufficient balance')) {
                 alert('❌ Недостаточно звезд для входа в игру!\n\nНужно: 10 ⭐\nПополните баланс в разделе Профиль.');
             } else if (error.message.includes('Already in game')) {
@@ -1134,12 +1001,8 @@ const Game = () => {
         
         const newPlayers = players.filter(player => player.telegramId !== tgUserData.telegramId);
         setPlayers(newPlayers);
-        setBankAmount(calculateBank(newPlayers.length));
+        setBankAmount(newPlayers.length * 10);
         setUserNumber(null);
-    };
-
-    const calculateBank = (playerCount) => {
-        return playerCount * 10;
     };
 
     const startGame = async () => {
@@ -1167,21 +1030,17 @@ const Game = () => {
     };
 
     const handleSpinComplete = async (winningNums) => {
-        console.log('Рулетка завершила вращение. Выигрышные номера:', winningNums);
         setWinningNumbers(winningNums);
         
         try {
-            // Получаем текущую игру
             const gameData = await API.getCurrentGame();
             if (gameData && gameData.id) {
-                // Завершаем игру на сервере
                 const finishResult = await API.finishGame(gameData.id, winningNums);
                 
                 if (finishResult.success) {
                     setWinners(finishResult.winners || []);
                     setBankAmount(finishResult.game?.bankAmount || bankAmount);
                     
-                    // Обновляем баланс пользователя если он выиграл
                     const tgUserData = getTelegramUserData();
                     const userWin = finishResult.winners?.find(w => 
                         w.telegramId === tgUserData?.telegramId
@@ -1206,7 +1065,6 @@ const Game = () => {
                         
                         alert(`🎉 Поздравляем! Вы выиграли ${userWin.prize} ⭐`);
                     } else if (currentUser) {
-                        // Обновляем статистику даже при проигрыше
                         const updatedUser = {
                             ...currentUser,
                             gamesPlayed: (currentUser.gamesPlayed || 0) + 1
@@ -1218,14 +1076,12 @@ const Game = () => {
             }
         } catch (error) {
             console.error('Finish game error:', error);
-            // Локальная обработка если сервер не ответил
             handleLocalGameFinish(winningNums);
         }
         
         setGameState('finished');
     };
 
-    // Резервная функция если сервер не отвечает
     const handleLocalGameFinish = (winningNums) => {
         const prizeCenter = Math.floor(bankAmount * 0.5);
         const prizeSide = Math.floor(bankAmount * 0.25);
@@ -1261,8 +1117,6 @@ const Game = () => {
         
         winnersList.push(...centerWinners, ...leftWinners, ...rightWinners);
         setWinners(winnersList);
-        
-        console.log('Победители (локально):', winnersList);
     };
 
     const startNewRound = () => {
@@ -1425,39 +1279,23 @@ const App = () => {
       Telegram.WebApp.expand();
     }
 
-    // Функция для безопасного получения текущей страницы из хеша
     const getCurrentPageFromHash = () => {
       const hash = window.location.hash;
-      console.log('App - Current hash:', hash);
-      
-      if (!hash || hash === '#' || hash === '#/') {
-        return 'home';
-      }
-      
+      if (!hash || hash === '#' || hash === '#/') return 'home';
       const match = hash.match(/^#\/([a-zA-Z0-9]+)/);
-      if (match && match[1]) {
-        return match[1];
-      }
-      
-      if (hash.includes('tgWebAppData')) {
-        return 'home';
-      }
-      
+      if (match && match[1]) return match[1];
+      if (hash.includes('tgWebAppData')) return 'home';
       return 'home';
     };
 
     const handleHashChange = () => {
-      const page = getCurrentPageFromHash();
-      setCurrentPage(page);
-      console.log('App - Page changed to:', page);
+      setCurrentPage(getCurrentPageFromHash());
     };
 
     window.addEventListener('hashchange', handleHashChange);
     handleHashChange();
 
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-    };
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   return React.createElement('div', { className: 'App' },
