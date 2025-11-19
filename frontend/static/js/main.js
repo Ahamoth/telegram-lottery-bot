@@ -208,7 +208,42 @@ const Header = () => {
         )
     );
 };
-
+// Компонент для отображения аватара
+const UserAvatar = ({ avatar, size = 'normal' }) => {
+  const isEmoji = typeof avatar === 'string' && avatar.length <= 3;
+  const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
+  
+  if (isImageUrl) {
+    // Реальное фото
+    return React.createElement('img', {
+      src: avatar,
+      className: `user-avatar ${size}`,
+      style: {
+        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        borderRadius: '50%',
+        objectFit: 'cover'
+      },
+      alt: "User Avatar"
+    });
+  } else {
+    // Эмодзи аватар
+    return React.createElement('div', {
+      className: `user-avatar ${size} emoji-avatar`,
+      style: {
+        width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        fontSize: size === 'large' ? '24px' : size === 'normal' ? '20px' : '16px',
+        border: '2px solid rgba(255, 215, 0, 0.5)'
+      }
+    }, avatar || '👤');
+  }
+};
 // Home Page Component
 const Home = () => {
     const navigateTo = (page) => {
@@ -1155,5 +1190,6 @@ root.render(
         React.createElement(App)
     )
 );
+
 
 
