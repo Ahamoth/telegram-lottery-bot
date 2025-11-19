@@ -1,6 +1,6 @@
 const { useState, useEffect, useRef } = React;
 
-// API service
+// API service — ОБНОВЛЁННЫЙ
 const API = {
   baseUrl: window.location.hostname === 'localhost' 
     ? 'http://localhost:3000' 
@@ -17,7 +17,8 @@ const API = {
       });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
       return await response.json();
@@ -45,19 +46,6 @@ const API = {
     });
   },
 
-  async startGame() {
-    return this.request('/game/start', {
-      method: 'POST',
-    });
-  },
-
-  async finishGame(gameId, winningNumbers) {
-    return this.request('/game/finish', {
-      method: 'POST',
-      body: JSON.stringify({ gameId, winningNumbers }),
-    });
-  },
-
   async leaveGame(telegramId) {
     return this.request('/game/leave', {
       method: 'POST',
@@ -69,21 +57,15 @@ const API = {
     return this.request(`/user/profile/${telegramId}`);
   },
 
-  async createInvoice(telegramId, amount) {
-    return this.request('/payment/create-invoice', {
+  // НОВЫЙ МЕТОД — создаём ссылку на оплату Stars
+  async createStarsInvoiceLink(telegramId, amount) {
+    return this.request('/payment/create-invoice-link', {
       method: 'POST',
-      body: JSON.stringify({ telegramId, amount, currency: 'XTR' }),
+      body: JSON.stringify({ telegramId, amount }),
     });
   },
 
-  async confirmPayment(paymentData) {
-    return this.request('/payment/confirm-payment', {
-      method: 'POST',
-      body: JSON.stringify(paymentData),
-    });
-  },
-
-  // Демо-платежи
+  // Демо-платежи (оставляем для теста)
   async demoPayment(telegramId, amount) {
     return this.request('/payment/demo-payment', {
       method: 'POST',
@@ -91,7 +73,6 @@ const API = {
     });
   },
 
-  // История платежей
   async getPaymentHistory(telegramId, limit = 10) {
     return this.request(`/payment/history/${telegramId}?limit=${limit}`);
   }
@@ -778,96 +759,80 @@ const Game = () => {
     );
 };
 
-// Profile Component
+// В компоненте Profile заменяем функцию handleTelegramPayment
 const Profile = () => {
     const [user, setUser] = useState(null);
-    const [stats, setStats] = useState({
-        gamesPlayed: 0,
-        gamesWon: 0,
-        totalWinnings: 0
-    });
+    const [stats, setStats] = useState({ gamesPlayed: 0, gamesWon: 0, totalWinnings: 0 });
     const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        loadUserData();
-    }, []);
-
     const loadUserData = async () => {
-        const savedUser = localStorage.getItem('user');
-        if (savedUser) {
-            const userData = JSON.parse(savedUser);
-            setUser(userData);
-            setStats({
-                gamesPlayed: userData.gamesPlayed || 0,
-                gamesWon: userData.gamesWon || 0,
-                totalWinnings: userData.totalWinnings || 0
-            });
+        if (!window.Telegram?.WebApp?.initDataUnsafe?.user) return;
+        
+        const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+        try {
+            const profile = await API.getUserProfile(tgUser.id);
+            if (profile.success) {
+                setUser(profile.user);
+                setStats({
+                    gamesPlayed: profile.user.gamesPlayed || 0,
+                    gamesWon: profile.user.gamesWon || 0,
+                    totalWinnings: profile.user.totalWinnings || 0
+                });
+            }
+        } catch (err) {
+            console.error('Failed to load profile:', err);
         }
     };
 
-    const handleTelegramPayment = async (amount) => {
-        if (!user || !window.Telegram?.WebApp) {
-            alert('Пополнение доступно только в Telegram');
-            return;
-        }
+    useEffect(() => {
+        loadUserData();
+        const interval = setInterval(loadUserData, 8000);
+        return () => clearInterval(interval);
+    }, []);
 
+    // НОВАЯ ФУНКЦИЯ ОПЛАТЫ — РАБОТАЕТ С createInvoiceLink
+    const handleTelegramPayment = async (amount) => {
+        if (!user || loading) return;
         setLoading(true);
 
         try {
-            const invoiceResult = await API.createInvoice(user.telegramId, amount);
-            
-            if (invoiceResult.success) {
-                const paymentData = {
-                    title: `Purchase ${amount} Stars`,
-                    description: `Get ${amount} Telegram Stars for the game`,
-                    payload: invoiceResult.payment.payload,
-                    provider_token: invoiceResult.payment.provider_token || 'TEST',
-                    currency: 'XTR',
-                    prices: invoiceResult.payment.prices,
-                    need_name: false,
-                    need_phone_number: false, 
-                    need_email: false,
-                    need_shipping_address: false
-                };
+            // Шаг 1: Запрашиваем ссылку на оплату у бэкенда
+            const result = await API.createStarsInvoiceLink(user.telegramId, amount);
 
-                window.Telegram.WebApp.openInvoice(paymentData, (status) => {
-                    if (status === 'paid') {
-                        API.confirmPayment({
-                            telegram_payment_charge_id: 'stars_payment_' + Date.now(),
-                            provider_payment_charge_id: 'telegram_stars',
-                            payload: invoiceResult.payment.payload
-                        }).then(result => {
-                            if (result.success) {
-                                alert(`✅ Успешно пополнено ${amount} ⭐!`);
-                                loadUserData();
-                                window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                                    detail: { balance: result.newBalance }
-                                }));
-                            }
-                        });
-                    } else if (status === 'failed') {
-                        alert('❌ Платеж не прошел');
-                    } else if (status === 'cancelled') {
-                        alert('⚠️ Платеж отменен');
-                    }
-                });
-                
-            } else {
-                alert('❌ Ошибка создания платежа');
+            if (!result.success || !result.invoice_link) {
+                throw new Error('Не удалось создать ссылку на оплату');
             }
+
+            // Шаг 2: Открываем оплату через Telegram (самый надёжный способ)
+            window.location.href = result.invoice_link;
+
+            // Альтернатива (если в будущем Telegram добавит openInvoice в WebApp):
+            // if (Telegram.WebApp.openInvoice) {
+            //   Telegram.WebApp.openInvoice(result.invoice_link);
+            // } else {
+            //   window.location.href = result.invoice_link;
+            // }
+
+            // После оплаты Telegram сам закроет окно и вернёт пользователя в Mini App
+            // Баланс обновится автоматически через polling или successful_payment в боте
+
         } catch (error) {
-            console.error('Stars payment error:', error);
-            try {
-                const demoResult = await API.demoPayment(user.telegramId, amount);
-                if (demoResult.success) {
-                    alert(`✅ Демо-режим: баланс пополнен на ${amount} ⭐`);
-                    loadUserData();
-                    window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                        detail: { balance: demoResult.newBalance }
-                    }));
+            console.error('Payment error:', error);
+            
+            // Если ошибка — пробуем демо-режим (только для теста!)
+            if (confirm('❌ Оплата не удалась. Использовать демо-режим?')) {
+                try {
+                    const demoResult = await API.demoPayment(user.telegramId, amount);
+                    if (demoResult.success) {
+                        alert(`✅ Демо: +${amount} ⭐`);
+                        loadUserData();
+                        window.dispatchEvent(new CustomEvent('balanceUpdated', {
+                            detail: { balance: demoResult.newBalance }
+                        }));
+                    }
+                } catch (demoErr) {
+                    alert('❌ Даже демо не сработал :(');
                 }
-            } catch (demoError) {
-                alert('❌ Ошибка при пополнении баланса');
             }
         } finally {
             setLoading(false);
@@ -876,7 +841,7 @@ const Profile = () => {
 
     return React.createElement('div', { className: 'profile' },
         React.createElement('div', { className: 'profile-header' },
-            React.createElement('h1', null, '👤 Профиль'),
+            React.createElement('h1', null, 'Профиль'),
             user && React.createElement('p', { style: { marginTop: '0.5rem', opacity: 0.8, fontSize: '0.9rem' } }, 
                 `ID: ${user.telegramId}`
             )
@@ -906,12 +871,12 @@ const Profile = () => {
         ),
         
         user && React.createElement('div', { className: 'balance-display' },
-            React.createElement('h2', null, '💰 Баланс'),
+            React.createElement('h2', null, 'Баланс'),
             React.createElement('div', { className: 'balance-value' }, `${user.balance} ⭐`)
         ),
 
         React.createElement('div', { className: 'profile-actions' },
-            React.createElement('h2', null, '💫 Пополнить баланс'),
+            React.createElement('h2', null, 'Пополнить баланс'),
             React.createElement('div', { className: 'action-buttons' },
                 React.createElement('button', { 
                     className: 'control-button primary',
@@ -933,6 +898,9 @@ const Profile = () => {
                     onClick: () => handleTelegramPayment(500),
                     disabled: loading
                 }, loading ? '...' : '500 ⭐')
+            ),
+            React.createElement('p', { style: { fontSize: '0.8rem', opacity: 0.7, marginTop: '1rem' } },
+                'Оплата через Telegram Stars — безопасно и мгновенно ⭐'
             )
         )
     );
@@ -1026,3 +994,4 @@ root.render(
         React.createElement(App)
     )
 );
+
