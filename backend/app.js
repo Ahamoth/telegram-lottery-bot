@@ -244,7 +244,6 @@ app.get('/', (req, res) => {
 });
 
 // Start bot
-/ Start bot
 console.log('🔧 Bot initialization...');
 console.log('BOT_TOKEN:', process.env.BOT_TOKEN ? 'Provided' : 'Missing');
 console.log('NODE_ENV:', process.env.NODE_ENV);
@@ -311,4 +310,5 @@ const startServer = async () => {
 };
 
 startServer();
+
 
