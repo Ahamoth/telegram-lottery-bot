@@ -1,6 +1,7 @@
+// main.js
 const { useState, useEffect, useRef } = React;
 
-// API service
+// API service (остается без изменений)
 const API = {
   baseUrl: window.location.hostname === 'localhost' 
     ? 'http://localhost:3000' 
@@ -83,7 +84,6 @@ const API = {
     });
   },
 
-  // Демо-платежи
   async demoPayment(telegramId, amount) {
     return this.request('/payment/demo-payment', {
       method: 'POST',
@@ -91,21 +91,20 @@ const API = {
     });
   },
 
-  // История платежей
   async getPaymentHistory(telegramId, limit = 10) {
     return this.request(`/payment/history/${telegramId}?limit=${limit}`);
   }
 };
 
-// Компонент для отображения аватара
+// Компонент для отображения аватара (остается без изменений)
 const UserAvatar = ({ avatar, size = 'normal' }) => {
   const isDefault = avatar === 'default' || !avatar;
   const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
   const isTelegramSVG = typeof avatar === 'string' && avatar.includes('userpic/320/');
   
   const avatarStyles = {
-    width: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
-    height: size === 'large' ? '50px' : size === 'normal' ? '40px' : '30px',
+    width: size === 'large' ? '44px' : size === 'normal' ? '36px' : '28px',
+    height: size === 'large' ? '44px' : size === 'normal' ? '36px' : '28px',
     borderRadius: '50%',
     objectFit: 'cover',
     display: 'flex',
@@ -115,14 +114,12 @@ const UserAvatar = ({ avatar, size = 'normal' }) => {
   };
 
   if (isImageUrl && !isTelegramSVG) {
-    // Реальное фото профиля (JPEG/PNG)
     return React.createElement('img', {
       src: avatar,
       className: `user-avatar ${size}`,
       style: avatarStyles,
       alt: "User Avatar",
       onError: (e) => {
-        // Если изображение не загрузилось, показываем дефолтный аватар
         e.target.style.display = 'none';
         const fallback = document.createElement('div');
         fallback.className = `user-avatar ${size} default-avatar`;
@@ -130,29 +127,28 @@ const UserAvatar = ({ avatar, size = 'normal' }) => {
           ${Object.entries(avatarStyles).map(([key, value]) => `${key}: ${value};`).join(' ')}
           background: linear-gradient(135deg, #667eea, #764ba2);
           color: white;
-          font-size: ${size === 'large' ? '20px' : size === 'normal' ? '16px' : '12px'};
+          font-size: ${size === 'large' ? '18px' : size === 'normal' ? '16px' : '14px'};
         `;
         fallback.innerHTML = '👤';
         e.target.parentNode.appendChild(fallback);
       }
     });
   } else {
-    // Дефолтный аватар (Telegram SVG или простой эмодзи)
     return React.createElement('div', {
       className: `user-avatar ${size} default-avatar`,
       style: {
         ...avatarStyles,
         background: 'linear-gradient(135deg, #667eea, #764ba2)',
         color: 'white',
-        fontSize: size === 'large' ? '20px' : size === 'normal' ? '16px' : '12px',
+        fontSize: size === 'large' ? '18px' : size === 'normal' ? '16px' : '14px',
         fontWeight: 'bold'
       }
     }, '👤');
   }
 };
 
-// Header Component
-const Header = () => {
+// Compact Header Component
+const Header = ({ currentPage }) => {
     const [user, setUser] = useState(null);
     const [balance, setBalance] = useState(0);
     const [userAvatar, setUserAvatar] = useState('👤');
@@ -196,48 +192,46 @@ const Header = () => {
                 }
             } catch (error) {
                 console.error('Telegram auth failed:', error);
-                alert('❌ Ошибка авторизации. Пожалуйста, откройте приложение через Telegram бота.');
             }
-        } else {
-            alert('❌ Это приложение работает только внутри Telegram. Пожалуйста, откройте через бота.');
         }
     };
 
-   // В Header компоненте
-const generateTelegramAvatar = (tgUser) => {
-  if (!tgUser) return 'default';
-  
-  // Проверяем есть ли реальное фото (не дефолтное SVG)
-  if (tgUser.photo_url && !tgUser.photo_url.includes('/i/userpic/320/')) {
-    return tgUser.photo_url; // Реальное фото
-  }
-  
-  return 'default'; // Дефолтный аватар
-};
+    const generateTelegramAvatar = (tgUser) => {
+        if (!tgUser) return 'default';
+        if (tgUser.photo_url && !tgUser.photo_url.includes('/i/userpic/320/')) {
+            return tgUser.photo_url;
+        }
+        return 'default';
+    };
 
     const navigateTo = (page) => {
         window.location.hash = page;
     };
 
+    const isActive = (page) => currentPage === page ? 'active' : '';
+
     return React.createElement('header', { className: 'header' },
-        React.createElement('div', { className: 'logo' }, '🎰 Счастливый Номер'),
+        React.createElement('div', { className: 'logo' }, '🎰 Lucky Number'),
         React.createElement('nav', null,
             React.createElement('ul', { className: 'nav-links' },
                 React.createElement('li', null, 
                     React.createElement('a', { 
                         href: '#home',
+                        className: isActive('home'),
                         onClick: (e) => { e.preventDefault(); navigateTo('home'); }
                     }, 'Главная')
                 ),
                 React.createElement('li', null, 
                     React.createElement('a', { 
                         href: '#game',
+                        className: isActive('game'),
                         onClick: (e) => { e.preventDefault(); navigateTo('game'); }
                     }, 'Играть')
                 ),
                 React.createElement('li', null, 
                     React.createElement('a', { 
                         href: '#profile',
+                        className: isActive('profile'),
                         onClick: (e) => { e.preventDefault(); navigateTo('profile'); }
                     }, 'Профиль')
                 )
@@ -245,12 +239,12 @@ const generateTelegramAvatar = (tgUser) => {
         ),
         React.createElement('div', { className: 'header-user' },
             React.createElement(UserAvatar, { avatar: userAvatar, size: 'normal' }),
-            React.createElement('div', { className: 'balance' }, `Баланс: ${balance}`)
+            React.createElement('div', { className: 'balance' }, balance)
         )
     );
 };
 
-// Home Page Component
+// Compact Home Page Component
 const Home = () => {
     const navigateTo = (page) => {
         window.location.hash = page;
@@ -258,9 +252,9 @@ const Home = () => {
 
     return React.createElement('div', { className: 'home' },
         React.createElement('div', { className: 'hero' },
-            React.createElement('h1', null, '🎰 Счастливый Номер'),
+            React.createElement('h1', null, '🎰 Lucky Number'),
             React.createElement('p', null, 'Реальная лотерея с Telegram Stars!'),
-            React.createElement('p', null, 'Получи номер от 1 до 10 и выигрывай настоящие звезды с реальными игроками!'),
+            React.createElement('p', null, 'Получи номер от 1 до 10 и выигрывай настоящие звезды!'),
             React.createElement('button', { 
                 className: 'cta-button',
                 onClick: () => navigateTo('game')
@@ -269,42 +263,38 @@ const Home = () => {
         React.createElement('div', { className: 'how-to-play' },
             React.createElement('h2', null, '🎯 Как играть?'),
             React.createElement('ol', null,
-                React.createElement('li', null, 'Пополните баланс звездами в разделе Профиль'),
-                React.createElement('li', null, 'Нажмите "Начать играть" чтобы присоединиться к лобби'),
-                React.createElement('li', null, 'Каждому игроку присваивается уникальный номер от 1 до 10'),
-                React.createElement('li', null, 'Когда набирается 2+ реальных игроков - игра начинается'),
-                React.createElement('li', null, 'Запускается анимированная рулетка'),
-                React.createElement('li', null, 'Определяются 3 выигрышных номера'),
-                React.createElement('li', null, 'Победители получают реальные звезды на баланс')
+                React.createElement('li', null, 'Пополните баланс звездами'),
+                React.createElement('li', null, 'Присоединитесь к лобби'),
+                React.createElement('li', null, 'Получите уникальный номер'),
+                React.createElement('li', null, 'Ждите начала игры (2+ игрока)'),
+                React.createElement('li', null, 'Следите за рулеткой'),
+                React.createElement('li', null, 'Получайте выигрыш!')
             ),
-            React.createElement('p', { style: { marginTop: '1rem', fontWeight: 'bold', textAlign: 'center' } }, 
-                '💰 Призы: Главный приз - 50% банка, дополнительные - по 25% банка!'
-            ),
-            React.createElement('p', { style: { marginTop: '0.5rem', textAlign: 'center', color: '#ffd700' } }, 
-                '🎮 Вход в игру: 10 ⭐ с игрока'
+            React.createElement('p', { style: { marginTop: '1rem', textAlign: 'center', color: '#ffd700' } }, 
+                '💰 Призы: 50% / 25% / 25% от банка!'
             )
         ),
         React.createElement('div', { className: 'features' },
-            React.createElement('h2', null, '⭐ Почему выбирают нас?'),
+            React.createElement('h2', null, '⭐ Почему мы?'),
             React.createElement('div', { className: 'features-grid' },
                 React.createElement('div', { className: 'feature-card' },
-                    React.createElement('h3', null, '👥 Только реальные игроки'),
-                    React.createElement('p', null, 'Играйте с реальными пользователями из Telegram. Никаких ботов!')
+                    React.createElement('h3', null, '👥 Реальные игроки'),
+                    React.createElement('p', null, 'Только живые пользователи, никаких ботов')
                 ),
                 React.createElement('div', { className: 'feature-card' },
                     React.createElement('h3', null, '💫 Настоящие звезды'),
-                    React.createElement('p', null, 'Выигрывайте и проигрывайте реальные Telegram Stars')
+                    React.createElement('p', null, 'Выигрывайте реальные Telegram Stars')
                 ),
                 React.createElement('div', { className: 'feature-card' },
                     React.createElement('h3', null, '⚡ Честная игра'),
-                    React.createElement('p', null, 'Прозрачная система розыгрыша и моментальные выплаты')
+                    React.createElement('p', null, 'Прозрачная система и моментальные выплаты')
                 )
             )
         )
     );
 };
 
-// Roulette Component
+// Roulette Component (остается без изменений)
 const Roulette = ({ onSpinComplete }) => {
     const [isSpinning, setIsSpinning] = useState(false);
     const [rotation, setRotation] = useState(0);
@@ -373,8 +363,8 @@ const Roulette = ({ onSpinComplete }) => {
                         width: 100%; height: 100%; border-radius: 50%; 
                         background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
                         display: flex; align-items: center; justify-content: center;
-                        font-size: 24px; font-weight: bold; color: white;
-                        border: 8px solid #ffd700; box-shadow: 0 0 30px rgba(255,215,0,0.5);
+                        font-size: 20px; font-weight: bold; color: white;
+                        border: 6px solid #ffd700; box-shadow: 0 0 20px rgba(255,215,0,0.5);
                     `;
                     e.target.parentNode.appendChild(fallback);
                 }
@@ -389,14 +379,13 @@ const Roulette = ({ onSpinComplete }) => {
     );
 };
 
-// Game Component
+// Compact Game Component
 const Game = () => {
     const [players, setPlayers] = useState([]);
     const [gameState, setGameState] = useState('waiting');
     const [winners, setWinners] = useState([]);
     const [winningNumbers, setWinningNumbers] = useState(null);
     const [bankAmount, setBankAmount] = useState(0);
-    const [joinTime, setJoinTime] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
     const [userNumber, setUserNumber] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -411,49 +400,18 @@ const Game = () => {
         initializeGame();
     }, []);
 
-    useEffect(() => {
-        if (gameState === 'waiting') {
-            syncGameState();
-        }
-    }, [gameState]);
-
-    const syncGameState = async () => {
-        try {
-            const gameData = await API.getCurrentGame();
-            if (gameData && gameData.players) {
-                setPlayers(gameData.players);
-                setBankAmount(gameData.bankAmount || 0);
-                setGameState(gameData.status || 'waiting');
-                
-                const userPlayer = gameData.players.find(p => 
-                    p.telegramId === (currentUser?.telegramId)
-                );
-                if (userPlayer) {
-                    setUserNumber(userPlayer.number);
-                }
-            }
-        } catch (error) {
-            console.log('Error syncing game state:', error.message);
-        }
-    };
-
     const initializeGame = () => {
         setPlayers([]);
         setBankAmount(0);
-        setJoinTime(Date.now());
         setUserNumber(null);
-        console.log('Игра инициализирована');
     };
 
-    // В Game компоненте
-const getUserAvatar = (user) => {
-  // Если у пользователя есть реальное фото
-  if (user.avatar && user.avatar !== 'default' && !user.avatar.includes('/i/userpic/320/')) {
-    return user.avatar;
-  }
-  
-  return 'default'; // Дефолтный аватар
-};
+    const getUserAvatar = (user) => {
+        if (user.avatar && user.avatar !== 'default' && !user.avatar.includes('/i/userpic/320/')) {
+            return user.avatar;
+        }
+        return 'default';
+    };
 
     const joinGame = async () => {
         if (players.length >= 10) {
@@ -502,7 +460,6 @@ const getUserAvatar = (user) => {
                 setPlayers(newPlayers);
                 setBankAmount(result.bankAmount);
                 setUserNumber(result.userNumber);
-                setJoinTime(Date.now());
                 
                 const updatedUser = { ...currentUser, balance: result.newBalance };
                 setCurrentUser(updatedUser);
@@ -512,20 +469,11 @@ const getUserAvatar = (user) => {
                     detail: { balance: result.newBalance }
                 }));
                 
-                alert(`✅ Вы присоединились к игре! Ваш номер: ${result.userNumber}\nСписано: 10 ⭐`);
+                alert(`✅ Вы присоединились! Ваш номер: ${result.userNumber}`);
             }
         } catch (error) {
             console.error('Join game failed:', error);
-            if (error.message.includes('400')) {
-                try {
-                    const errorResponse = await error.response?.json();
-                    alert(`❌ ${errorResponse.error}`);
-                } catch {
-                    alert('❌ Не удалось присоединиться к игре');
-                }
-            } else {
-                alert('❌ Ошибка соединения с сервером');
-            }
+            alert('❌ Ошибка соединения с сервером');
         } finally {
             setLoading(false);
         }
@@ -545,70 +493,38 @@ const getUserAvatar = (user) => {
                 window.dispatchEvent(new CustomEvent('balanceUpdated', {
                     detail: { balance: newBalance }
                 }));
-                
-                alert(`✅ Вы покинули лобби. Возвращено: 10 ⭐`);
             }
         } catch (error) {
             console.error('Leave game failed:', error);
-            alert('❌ Ошибка при выходе из лобби');
         }
         
         const newPlayers = players.filter(p => p.telegramId !== currentUser.telegramId);
         setPlayers(newPlayers);
-        setBankAmount(calculateBank(newPlayers.length));
+        setBankAmount(newPlayers.length * 10);
         setUserNumber(null);
     };
 
-    const calculateBank = (playerCount) => {
-        return playerCount * 10;
-    };
-
     const startGame = async () => {
-        console.log('🔄 Attempting to start game...');
-        
-        // Локальная проверка перед запросом к API
         const realPlayersCount = players.filter(p => !p.isBot).length;
         if (realPlayersCount < 2) {
-            alert('❌ Нужно минимум 2 реальных игрока для начала игры! Сейчас: ' + realPlayersCount);
+            alert('❌ Нужно минимум 2 реальных игрока! Сейчас: ' + realPlayersCount);
             return;
         }
 
         try {
-            console.log('🚀 Sending start request to API...');
             const result = await API.startGame();
-            
             if (result.success) {
-                console.log('✅ Game started successfully via API');
                 setGameState('active');
                 setWinners([]);
                 setWinningNumbers(null);
-            } else {
-                console.warn('⚠️ API returned success: false', result);
-                alert('❌ Не удалось начать игру');
             }
         } catch (error) {
-            console.error('❌ API start failed:', error);
-            
-            // Показываем детальную ошибку от сервера
-            if (error.message.includes('400')) {
-                try {
-                    const errorResponse = await error.response?.json();
-                    if (errorResponse?.details) {
-                        alert(`❌ ${errorResponse.error}\n${errorResponse.details}`);
-                    } else {
-                        alert('❌ Не удалось начать игру: недостаточно игроков');
-                    }
-                } catch {
-                    alert('❌ Не удалось начать игру: недостаточно игроков');
-                }
-            } else {
-                alert('❌ Ошибка соединения с сервером');
-            }
+            console.error('Start game failed:', error);
+            alert('❌ Не удалось начать игру');
         }
     };
 
     const handleSpinComplete = (winningNums) => {
-        console.log('Рулетка завершила вращение. Выигрышные номера:', winningNums);
         setWinningNumbers(winningNums);
         
         const prizeCenter = Math.floor(bankAmount * 0.5);
@@ -647,7 +563,6 @@ const getUserAvatar = (user) => {
         setWinners(winnersList);
         setGameState('finished');
         
-        console.log('Победители:', winnersList);
         updateUserStats(winnersList);
     };
 
@@ -685,7 +600,6 @@ const getUserAvatar = (user) => {
     };
 
     const startNewRound = () => {
-        console.log('Новый раунд');
         setGameState('waiting');
         setWinners([]);
         setWinningNumbers(null);
@@ -694,16 +608,7 @@ const getUserAvatar = (user) => {
     };
 
     const isUserInGame = players.some(p => p.telegramId === currentUser?.telegramId);
-    const timeInLobby = joinTime ? Math.floor((Date.now() - joinTime) / 1000) : 0;
     const realPlayersCount = players.filter(p => !p.isBot).length;
-
-    console.log('=== ТЕКУЩЕЕ СОСТОЯНИЕ ===');
-    console.log('Game State:', gameState);
-    console.log('Players:', players.length);
-    console.log('Real Players:', realPlayersCount);
-    console.log('User in game:', isUserInGame);
-    console.log('User number:', userNumber);
-    console.log('Bank:', bankAmount);
 
     return React.createElement('div', { className: 'game-page' },
         gameState === 'waiting' &&
@@ -711,23 +616,20 @@ const getUserAvatar = (user) => {
                 React.createElement('div', { className: 'room-info' },
                     React.createElement('h2', null, '👥 Игровое лобби'),
                     React.createElement('div', { className: 'lobby-stats' },
-                        React.createElement('p', null, `Реальных игроков: ${realPlayersCount}/10`),
+                        React.createElement('p', null, `Игроков: ${realPlayersCount}/10`),
                         React.createElement('p', null, `Банк: ${bankAmount} ⭐`),
                         userNumber && 
                             React.createElement('p', null, 
                                 `Ваш номер: `,
-                                React.createElement('strong', { style: { color: '#ffd700', fontSize: '1.2em' } }, userNumber)
+                                React.createElement('strong', { style: { color: '#ffd700' } }, userNumber)
                             ),
-                        React.createElement('p', { style: { fontSize: '0.9rem', opacity: 0.7 } }, 
-                            `В лобби: ${Math.floor(timeInLobby / 60)}:${(timeInLobby % 60).toString().padStart(2, '0')}`
-                        ),
                         realPlayersCount >= 2 && 
                             React.createElement('p', { style: { color: '#4caf50', fontWeight: 'bold' } }, 
-                                '✅ Достаточно игроков для начала игры!'
+                                '✅ Можно начинать!'
                             ),
                         realPlayersCount < 2 &&
-                            React.createElement('p', { style: { color: '#ff6b6b', fontWeight: 'bold' } }, 
-                                `❌ Нужно еще ${2 - realPlayersCount} игроков для начала`
+                            React.createElement('p', { style: { color: '#ff6b6b' } }, 
+                                `❌ Нужно еще ${2 - realPlayersCount} игроков`
                             )
                     ),
                     
@@ -736,20 +638,16 @@ const getUserAvatar = (user) => {
                             className: 'control-button primary',
                             onClick: joinGame,
                             disabled: players.length >= 10 || loading
-                        }, loading ? 'Подключение...' : players.length >= 10 ? 'Лобби заполнено' : `Присоединиться к игре (10 ⭐)`) :
+                        }, loading ? 'Подключение...' : players.length >= 10 ? 'Лобби заполнено' : `Присоединиться (10 ⭐)`) :
                         React.createElement('div', null,
                             React.createElement('p', { style: { color: '#4caf50', marginBottom: '1rem' } }, 
-                                '✅ Вы в игре! Ожидаем других игроков...'
+                                '✅ Вы в игре!'
                             ),
-                            realPlayersCount < 2 && 
-                                React.createElement('p', { style: { color: '#ffd700', marginBottom: '1rem' } }, 
-                                    `До начала игры: ${2 - realPlayersCount} игроков`
-                                ),
                             React.createElement('button', { 
                                 className: 'control-button secondary',
                                 onClick: leaveGame,
                                 disabled: loading
-                            }, loading ? 'Выход...' : 'Покинуть лобби (вернуть 10 ⭐)')
+                            }, loading ? 'Выход...' : 'Покинуть лобби')
                         )
                 ),
 
@@ -759,20 +657,11 @@ const getUserAvatar = (user) => {
                             key: player.id || player.telegramId,
                             className: `player-card ${player.telegramId === currentUser?.telegramId ? 'current-user' : ''}`
                         },
-                            React.createElement(UserAvatar, { avatar: player.avatar, size: 'normal' }),
+                            React.createElement(UserAvatar, { avatar: player.avatar, size: 'small' }),
                             React.createElement('div', { className: 'player-name' }, player.name),
                             React.createElement('div', { className: 'player-number' }, `#${player.number}`),
                             player.telegramId === currentUser?.telegramId && React.createElement('div', { 
-                                className: 'player-badge',
-                                style: { 
-                                    background: '#ffd700', 
-                                    color: '#333',
-                                    fontSize: '0.7rem',
-                                    padding: '2px 6px',
-                                    borderRadius: '10px',
-                                    marginTop: '5px',
-                                    fontWeight: 'bold'
-                                }
+                                className: 'player-badge'
                             }, 'Вы')
                         )
                     ),
@@ -780,14 +669,22 @@ const getUserAvatar = (user) => {
                     ...Array.from({ length: 10 - players.length }, (_, index) => 
                         React.createElement('div', { 
                             key: `empty-${index}`,
-                          className: 'player-card empty-slot'
+                            className: 'player-card empty-slot'
                         },
                             React.createElement('div', { className: 'player-avatar' }, '○'),
                             React.createElement('div', { className: 'player-name' }, 'Свободно'),
                             React.createElement('div', { className: 'player-number' }, '?')
                         )
                     )
-                )
+                ),
+                
+                isUserInGame && realPlayersCount >= 2 &&
+                    React.createElement('div', { className: 'game-controls' },
+                        React.createElement('button', { 
+                            className: 'control-button primary',
+                            onClick: startGame
+                        }, 'Начать игру')
+                    )
             ),
 
         gameState === 'active' &&
@@ -795,8 +692,7 @@ const getUserAvatar = (user) => {
                 React.createElement('div', { className: 'room-info' },
                     React.createElement('h2', null, '🎯 Игра началась!'),
                     React.createElement('p', null, `Банк: ${bankAmount} ⭐`),
-                    React.createElement('p', null, `Игроков: ${realPlayersCount}`),
-                    React.createElement('p', { style: { color: '#ffd700' } }, 'Рулетка запускается автоматически...')
+                    React.createElement('p', { style: { color: '#ffd700' } }, 'Рулетка запускается...')
                 ),
                 React.createElement(Roulette, { onSpinComplete: handleSpinComplete })
             ),
@@ -804,69 +700,52 @@ const getUserAvatar = (user) => {
         gameState === 'finished' &&
             React.createElement('div', { className: 'results-section' },
                 React.createElement('div', { className: 'winners-display' },
-                    React.createElement('h2', { style: { color: '#ffd700', marginBottom: '1rem' } }, '🎉 Результаты раунда! 🎉'),
+                    React.createElement('h2', { style: { color: '#ffd700', marginBottom: '1rem' } }, '🎉 Результаты!'),
                     
-                    React.createElement('div', { className: 'bank-info' },
-                        React.createElement('p', null, `Общий банк: ${bankAmount} ⭐`),
-                        React.createElement('p', null, `Распределение: 50% / 25% / 25%`)
+                    React.createElement('div', { className: 'lobby-stats' },
+                        React.createElement('p', null, `Банк: ${bankAmount} ⭐`),
+                        React.createElement('p', null, `Призы: 50% / 25% / 25%`)
                     ),
                     
                     winningNumbers &&
-                        React.createElement('div', { className: 'winning-numbers-info' },
-                            React.createElement('div', { 
-                                style: { 
-                                    background: 'linear-gradient(135deg, #ffd700, #ff6b00)',
-                                    color: '#333',
-                                    padding: '1rem 2rem',
-                                    borderRadius: '15px',
-                                    margin: '1rem auto',
-                                    maxWidth: '500px'
-                                } 
-                            },
-                                React.createElement('h3', { style: { marginBottom: '0.5rem' } }, 'Выигрышные номера:'),
-                                React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: '2rem', fontSize: '1.2rem' } },
-                                    React.createElement('div', null, 
-                                        React.createElement('strong', null, winningNumbers.left),
-                                        React.createElement('br'),
-                                        '(25%)'
-                                    ),
-                                    React.createElement('div', { style: { fontSize: '1.4rem', fontWeight: 'bold' } }, 
-                                        React.createElement('strong', null, winningNumbers.center),
-                                        React.createElement('br'),
-                                        '(50%)'
-                                    ),
-                                    React.createElement('div', null, 
-                                        React.createElement('strong', null, winningNumbers.right),
-                                        React.createElement('br'),
-                                        '(25%)'
-                                    )
+                        React.createElement('div', { style: { margin: '1rem 0' } },
+                            React.createElement('p', { style: { marginBottom: '0.5rem', fontWeight: '600' } }, 'Выигрышные номера:'),
+                            React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: '1.5rem', fontSize: '1.1rem' } },
+                                React.createElement('div', null, 
+                                    React.createElement('strong', null, winningNumbers.left),
+                                    React.createElement('div', { style: { fontSize: '0.8rem', opacity: 0.8 } }, '(25%)')
+                                ),
+                                React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 'bold' } }, 
+                                    React.createElement('strong', null, winningNumbers.center),
+                                    React.createElement('div', { style: { fontSize: '0.8rem', opacity: 0.8 } }, '(50%)')
+                                ),
+                                React.createElement('div', null, 
+                                    React.createElement('strong', null, winningNumbers.right),
+                                    React.createElement('div', { style: { fontSize: '0.8rem', opacity: 0.8 } }, '(25%)')
                                 )
                             )
                         ),
                     
                     winners.length > 0 ? 
                         React.createElement('div', null,
-                            React.createElement('h3', { style: { margin: '1.5rem 0 1rem 0', color: '#4caf50' } }, 'Победители:'),
+                            React.createElement('p', { style: { margin: '1rem 0 0.5rem 0', fontWeight: '600' } }, 'Победители:'),
                             winners.map((winner, index) => 
                                 React.createElement('div', { 
                                     key: `${winner.id || winner.telegramId}-${winner.type}`,
                                     className: `winner-badge ${winner.telegramId === currentUser?.telegramId ? 'current-user' : ''} winner-${winner.type}`
                                 },
-                                    React.createElement(UserAvatar, { avatar: winner.avatar, size: 'normal' }),
+                                    React.createElement(UserAvatar, { avatar: winner.avatar, size: 'small' }),
                                     React.createElement('div', { className: 'winner-info' },
                                         React.createElement('div', { className: 'winner-name' }, winner.name),
                                         React.createElement('div', { className: 'winner-prize' }, 
-                                            `${winner.prizeType}: ${winner.prize} ⭐`
+                                            `${winner.prize} ⭐ (${winner.prizeType})`
                                         )
                                     )
                                 )
                             )
                         ) :
-                        React.createElement('div', { className: 'no-winners' },
-                            React.createElement('p', null, 'В этом раунде победителей нет'),
-                            React.createElement('p', { style: { marginTop: '0.5rem', opacity: 0.8 } }, 
-                                'Никто не угадал выигрышные номера'
-                            )
+                        React.createElement('div', { className: 'text-center', style: { margin: '1rem 0', opacity: 0.8 } },
+                            React.createElement('p', null, 'В этом раунде победителей нет')
                         )
                 ),
                 
@@ -880,7 +759,7 @@ const getUserAvatar = (user) => {
     );
 };
 
-// Profile Component
+// Compact Profile Component
 const Profile = () => {
     const [user, setUser] = useState(null);
     const [stats, setStats] = useState({
@@ -904,185 +783,96 @@ const Profile = () => {
                 gamesWon: userData.gamesWon || 0,
                 totalWinnings: userData.totalWinnings || 0
             });
-            
-            if (userData.telegramId) {
-                try {
-                    const result = await API.getUserProfile(userData.telegramId);
-                    if (result.success) {
-                        setUser(result.user);
-                        setStats({
-                            gamesPlayed: result.user.gamesPlayed || 0,
-                            gamesWon: result.user.gamesWon || 0,
-                            totalWinnings: result.user.totalWinnings || 0
-                        });
-                        localStorage.setItem('user', JSON.stringify(result.user));
-                    }
-                } catch (error) {
-                    console.log('Using local profile data:', error.message);
-                }
-            }
         }
     };
 
-    const handleTelegramPayment = async (amount) => {
-        if (!user || !window.Telegram?.WebApp) {
-            alert('Пополнение доступно только в Telegram');
+    const handlePayment = async (amount) => {
+        if (!user) {
+            alert('Пользователь не найден');
             return;
         }
 
         setLoading(true);
 
         try {
-            // Создаем инвойс для Telegram Stars
-            const invoiceResult = await API.createInvoice(user.telegramId, amount);
-            
-            if (invoiceResult.success) {
-                
-                // Для Telegram Stars
-                const paymentData = {
-                    title: `Purchase ${amount} Stars`,
-                    description: `Get ${amount} Telegram Stars for the game`,
-                    payload: invoiceResult.payment.payload,
-                    provider_token: invoiceResult.payment.provider_token || 'TEST',
-                    currency: 'XTR', // Важно для Stars
-                    prices: invoiceResult.payment.prices,
-                    need_name: false,
-                    need_phone_number: false, 
-                    need_email: false,
-                    need_shipping_address: false
-                };
-
-                console.log('Opening Telegram Stars payment:', paymentData);
-
-                // Открываем платежную форму Stars
-                window.Telegram.WebApp.openInvoice(paymentData, (status) => {
-                    console.log('Telegram Stars payment status:', status);
-                    
-                    if (status === 'paid') {
-                        // Платеж успешен - подтверждаем
-                        API.confirmPayment({
-                            telegram_payment_charge_id: 'stars_payment_' + Date.now(),
-                            provider_payment_charge_id: 'telegram_stars',
-                            payload: invoiceResult.payment.payload
-                        }).then(result => {
-                            if (result.success) {
-                                alert(`✅ Successfully purchased ${amount} Stars!`);
-                                loadUserData(); // Перезагружаем данные пользователя
-                                
-                                // Обновляем баланс в хедере
-                                window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                                    detail: { balance: result.newBalance }
-                                }));
-                            } else {
-                                alert('❌ Error confirming payment');
-                            }
-                        }).catch(error => {
-                            console.error('Payment confirmation error:', error);
-                            alert('❌ Payment confirmation failed');
-                        });
-                    } else if (status === 'failed') {
-                        alert('❌ Payment failed');
-                    } else if (status === 'cancelled') {
-                        alert('⚠️ Payment cancelled');
-                    } else {
-                        alert('❌ Unknown payment status: ' + status);
-                    }
-                });
-                
-            } else {
-                alert('❌ Failed to create payment invoice');
+            const result = await API.demoPayment(user.telegramId, amount);
+            if (result.success) {
+                alert(`✅ Баланс пополнен на ${amount} ⭐`);
+                loadUserData();
+                window.dispatchEvent(new CustomEvent('balanceUpdated', {
+                    detail: { balance: result.newBalance }
+                }));
             }
         } catch (error) {
-            console.error('Stars payment error:', error);
-            
-            // Fallback: пробуем демо-платеж если основной не сработал
-            try {
-                console.log('Trying demo payment as fallback...');
-                const demoResult = await API.demoPayment(user.telegramId, amount);
-
-                if (demoResult.success) {
-                    alert(`✅ Демо-режим: баланс пополнен на ${amount} ⭐`);
-                    loadUserData();
-                    window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                        detail: { balance: demoResult.newBalance }
-                    }));
-                } else {
-                    alert('❌ Ошибка при пополнении баланса');
-                }
-            } catch (demoError) {
-                console.error('Demo payment also failed:', demoError);
-                alert('❌ Все методы платежа не сработали');
-            }
+            console.error('Payment error:', error);
+            alert('❌ Ошибка при пополнении баланса');
         } finally {
             setLoading(false);
         }
     };
 
+    const winRate = stats.gamesPlayed > 0 ? ((stats.gamesWon / stats.gamesPlayed) * 100).toFixed(1) : 0;
+
     return React.createElement('div', { className: 'profile' },
         React.createElement('div', { className: 'profile-header' },
-            React.createElement('h1', null, '👤 Ваш профиль'),
-            user && React.createElement('p', { style: { marginTop: '0.5rem', opacity: 0.8 } }, 
+            React.createElement('h1', null, '👤 Профиль'),
+            user && React.createElement('p', { className: 'text-secondary' }, 
                 `ID: ${user.telegramId}`
             )
         ),
         
         React.createElement('div', { className: 'stats-grid' },
             React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Сыграно игр'),
+                React.createElement('h3', null, 'Игры'),
                 React.createElement('div', { className: 'stat-value' }, stats.gamesPlayed)
             ),
             React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Выиграно игр'),
+                React.createElement('h3', null, 'Победы'),
                 React.createElement('div', { className: 'stat-value' }, stats.gamesWon)
             ),
             React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Общий выигрыш'),
-                React.createElement('div', { className: 'stat-value' }, `${stats.totalWinnings} ⭐`)
+                React.createElement('h3', null, 'Выигрыш'),
+                React.createElement('div', { className: 'stat-value' }, `${stats.totalWinnings}⭐`)
             ),
             React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Процент побед'),
-                React.createElement('div', { className: 'stat-value' },
-                    stats.gamesPlayed > 0 
-                        ? `${((stats.gamesWon / stats.gamesPlayed) * 100).toFixed(1)}%`
-                        : '0%'
-                )
+                React.createElement('h3', null, 'Винрейт'),
+                React.createElement('div', { className: 'stat-value' }, `${winRate}%`)
             )
         ),
         
         user && React.createElement('div', { className: 'balance-display' },
-            React.createElement('h2', null, '💰 Текущий баланс'),
+            React.createElement('h2', null, '💰 Баланс'),
             React.createElement('div', { 
+                className: 'text-accent',
                 style: { 
-                    fontSize: '2.5rem', 
-                    fontWeight: 'bold', 
-                    color: '#ffd700',
-                    textAlign: 'center',
-                    margin: '1rem 0'
+                    fontSize: '2rem', 
+                    fontWeight: 'bold',
+                    margin: '0.5rem 0'
                 } 
             }, `${user.balance} ⭐`)
         ),
 
         React.createElement('div', { className: 'profile-actions' },
-            React.createElement('h2', null, '💫 Пополнение баланса'),
-            React.createElement('p', { style: { textAlign: 'center', marginBottom: '1rem', opacity: 0.8 } },
-                'Пополните баланс Telegram Stars для участия в играх'
+            React.createElement('h2', null, '💫 Пополнить'),
+            React.createElement('p', { className: 'text-secondary text-center mb-2' },
+                'Выберите сумму для пополнения'
             ),
             React.createElement('div', { className: 'action-buttons' },
                 React.createElement('button', { 
                     className: 'control-button primary',
-                    onClick: () => handleTelegramPayment(10),
+                    onClick: () => handlePayment(10),
                     disabled: loading
-                }, loading ? 'Обработка...' : 'Пополнить 10 ⭐'),
+                }, loading ? 'Обработка...' : '10 ⭐'),
                 React.createElement('button', { 
                     className: 'control-button primary',
-                    onClick: () => handleTelegramPayment(50),
+                    onClick: () => handlePayment(50),
                     disabled: loading
-                }, loading ? 'Обработка...' : 'Пополнить 50 ⭐'),
+                }, loading ? 'Обработка...' : '50 ⭐'),
                 React.createElement('button', { 
                     className: 'control-button primary',
-                    onClick: () => handleTelegramPayment(100),
+                    onClick: () => handlePayment(100),
                     disabled: loading
-                }, loading ? 'Обработка...' : 'Пополнить 100 ⭐')
+                }, loading ? 'Обработка...' : '100 ⭐')
             )
         )
     );
@@ -1104,7 +894,6 @@ const App = () => {
             window.Telegram.WebApp.expand();
             window.Telegram.WebApp.setHeaderColor('#2c2c2c');
             window.Telegram.WebApp.setBackgroundColor('#667eea');
-            console.log('Telegram Web App initialized');
         }
 
         window.addEventListener('hashchange', handleHashChange);
@@ -1117,7 +906,7 @@ const App = () => {
 
     const renderPage = () => {
         if (!isInitialized) {
-            return React.createElement('div', { className: 'loading' }, 'Загрузка приложения...');
+            return React.createElement('div', { className: 'loading' }, 'Загрузка...');
         }
 
         switch(currentPage) {
@@ -1131,7 +920,7 @@ const App = () => {
     };
 
     return React.createElement('div', { className: 'App' },
-        React.createElement(Header),
+        React.createElement(Header, { currentPage }),
         React.createElement('main', null, renderPage())
     );
 };
@@ -1154,25 +943,17 @@ class ErrorBoundary extends React.Component {
     render() {
         if (this.state.hasError) {
             return React.createElement('div', { 
+                className: 'text-center',
                 style: { 
                     padding: '2rem', 
-                    textAlign: 'center',
                     color: 'white'
                 } 
             },
-                React.createElement('h1', null, '😵 Произошла ошибка'),
-                React.createElement('p', null, 'Пожалуйста, перезагрузите приложение'),
+                React.createElement('h1', null, '😵 Ошибка'),
+                React.createElement('p', { className: 'mb-2' }, 'Пожалуйста, перезагрузите приложение'),
                 React.createElement('button', {
                     onClick: () => window.location.reload(),
-                    style: {
-                        padding: '1rem 2rem',
-                        background: '#ff6b6b',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '10px',
-                        cursor: 'pointer',
-                        marginTop: '1rem'
-                    }
+                    className: 'control-button primary'
                 }, 'Перезагрузить')
             );
         }
@@ -1188,12 +969,3 @@ root.render(
         React.createElement(App)
     )
 );
-
-
-
-
-
-
-
-
-
