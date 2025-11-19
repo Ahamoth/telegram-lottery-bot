@@ -45,8 +45,7 @@ module.exports = (pool) => {
     }
   };
 
-  // Генерация аватара на основе данных пользователя
-const generateUserAvatar = (userData, telegramUserData) => {
+  const generateUserAvatar = (userData, telegramUserData) => {
   // Проверяем есть ли реальное фото (не дефолтное)
   if (telegramUserData && telegramUserData.photo_url) {
     const isDefaultAvatar = telegramUserData.photo_url.includes('/i/userpic/320/');
@@ -57,22 +56,8 @@ const generateUserAvatar = (userData, telegramUserData) => {
     }
   }
   
-  // Если фото дефолтное или отсутствует - генерируем эмодзи
-  if (!userData) return '👤';
-  
-  const emojiAvatars = ['😊', '😎', '🤠', '👨‍💻', '👩‍💻', '🦊', '🐯', '🐶', '🐱', '🐼'];
-  
-  if (userData.username) {
-    const firstChar = userData.username.charAt(0).toUpperCase();
-    const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
-    return emojiAvatars[emojiIndex];
-  } else if (userData.first_name) {
-    const firstChar = userData.first_name.charAt(0).toUpperCase();
-    const emojiIndex = firstChar.charCodeAt(0) % emojiAvatars.length;
-    return emojiAvatars[emojiIndex];
-  }
-  
-  return '👤';
+  // Во всех остальных случаях - дефолтный аватар
+  return 'default';
 };
 
   // Find or create user
@@ -239,4 +224,5 @@ const generateUserAvatar = (userData, telegramUserData) => {
 
   return router;
 };
+
 
