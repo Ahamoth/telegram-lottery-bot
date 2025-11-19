@@ -30,16 +30,15 @@ const API = {
   leaveGame(telegramId) { return this.request('/game/leave', { method: 'POST', body: JSON.stringify({ telegramId }) }); },
   getUserProfile(id) { return this.request(`/user/profile/${id}`); },
   createStarsInvoiceLink(telegramId, amount) { return this.request('/payment/create-invoice-link', { method: 'POST', body: JSON.stringify({ telegramId, amount }) }); },
-  demoPayment(telegramId, amount) { return this.request('/payment/demo-payment', { method: 'POST', body: JSON.stringify({ telegramId, amount }) }); },
-  getPaymentHistory(id, limit = 10) { return this.request(`/payment/history/${id}?limit=${limit}`); }
+  withdrawToTonSpace(telegramId, amount) { return this.request('/payment/withdraw-to-tonspace', { method: 'POST', body: JSON.stringify({ telegramId, amount }) }); },
+  demoPayment(telegramId, amount) { return this.request('/payment/demo-payment', { method: 'POST', body: JSON.stringify({ telegramId, amount }) }); }
 };
 
-// Компонент аватара — реальное фото или красивые инициалы
+// Компонент аватара — всегда красиво
 const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
-  const sizes = { large: '56px', normal: '40px', small: '32px' };
-  const font = { large: '22px', normal: '16px', small: '13px' };
+  const sizes = { large: '64px', normal: '48px', small: '36px' };
+  const font = { large: '26px', normal: '18px', small: '14px' };
 
-  // Если это SVG-инициалы от Telegram — игнорируем
   const isTelegramSvg = avatar && (avatar.includes('.svg') || avatar.includes('/userpic/'));
 
   if (avatar && !isTelegramSvg && avatar.startsWith('https://')) {
@@ -51,8 +50,8 @@ const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
         height: sizes[size],
         borderRadius: '50%',
         objectFit: 'cover',
-        border: '3px solid #ffd700',
-        boxShadow: '0 0 15px rgba(255,215,0,0.4)'
+        border: '4px solid #ffd700',
+        boxShadow: '0 0 20px rgba(255,215,0,0.6)'
       },
       loading: 'lazy'
     });
@@ -65,59 +64,63 @@ const UserAvatar = ({ avatar, name = '', size = 'normal' }) => {
       width: sizes[size],
       height: sizes[size],
       borderRadius: '50%',
-      background: 'linear-gradient(135deg, #667eea, #764ba2)',
+      background: 'linear-gradient(135deg, #ff6b6b, #feca57)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       color: 'white',
       fontWeight: 'bold',
       fontSize: font[size],
-      border: '3px solid #ffd700',
-      boxShadow: '0 0 15px rgba(255,215,0,0.4)'
+      border: '4px solid #ffd700',
+      boxShadow: '0 0 20px rgba(255,215,0,0.6)'
     }
   }, initials);
 };
 
-// Header
+// Header с аватаром и балансом
 const Header = () => {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
     const init = async () => {
-      if (!window.Telegram?.WebApp) return;
-
-      const initData = window.Telegram.WebApp.initData;
-      const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+      if (!window.Telegram?.WebApp?.initData) return;
 
       try {
-        const res = await API.authenticate(initData);
+        const res = await API.authenticate(window.Telegram.WebApp.initData);
         if (res.success) {
           setUser(res.user);
           localStorage.setItem('user', JSON.stringify(res.user));
         }
       } catch (err) {
-        console.error('Auth failed:', err);
+        console.error('Auth error:', err);
       }
     };
+
     init();
 
-    const updateBalance = () => init();
-    window.addEventListener('balanceUpdated', updateBalance);
-    return () => window.removeEventListener('balanceUpdated', updateBalance);
+    const handler = () => init();
+    window.addEventListener('focus', handler);
+    return () => window.removeEventListener('focus', handler);
   }, []);
+
+  if (!user) return React.createElement('div', { className: 'header loading' }, 'Загрузка...');
 
   return React.createElement('header', { className: 'header' },
     React.createElement('div', { className: 'user-info' },
-      user && React.createElement(UserAvatar, { avatar: user.avatar, name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username, size: 'large' }),
+      React.createElement(UserAvatar, { 
+        avatar: user.avatar, 
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username,
+        size: 'large'
+      }),
       React.createElement('div', { className: 'user-details' },
-        React.createElement('div', { className: 'user-name' }, user?.firstName || 'Игрок'),
-        React.createElement('div', { className: 'user-balance' }, user ? `${user.balance} ⭐` : '0 ⭐')
+        React.createElement('div', { className: 'user-name' }, user.firstName || user.username || 'Игрок'),
+        React.createElement('div', { className: 'user-balance' }, `${user.balance} ⭐`)
       )
     )
   );
 };
 
-// Профиль
+// Профиль с пополнением и выводом на TON Space
 const Profile = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -128,12 +131,16 @@ const Profile = () => {
     try {
       const res = await API.getUserProfile(tgUser.id);
       if (res.success) setUser(res.user);
-    } catch (err) { }
+    } catch (err) {}
   };
 
-  useEffect(() => { loadUser(); const i = setInterval(loadUser, 10000); return () => clearInterval(i); }, []);
+  useEffect(() => {
+    loadUser();
+    const interval = setInterval(loadUser, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleTelegramPayment = async (amount) => {
+  const handlePayment = async (amount) => {
     if (loading || !user) return;
     setLoading(true);
     try {
@@ -144,7 +151,7 @@ const Profile = () => {
         alert('Ошибка создания платежа');
       }
     } catch (err) {
-      alert('Ошибка. Попробуй демо: ' + amount + ' ⭐');
+      alert('Ошибка. Попробуй демо');
       await API.demoPayment(user.telegramId, amount);
       loadUser();
     } finally {
@@ -152,32 +159,61 @@ const Profile = () => {
     }
   };
 
-  if (!user) return React.createElement('div', { className: 'loading' }, 'Загрузка...');
+  const handleWithdraw = async () => {
+    if (loading || user.balance < 10) return alert('Минимум 10 ⭐');
+    if (!confirm(`Вывести ${user.balance} ⭐ на TON Space?`)) return;
+
+    setLoading(true);
+    try {
+    const res = await API.withdrawToTonSpace(user.telegramId, user.balance);
+      alert(res.success ? res.message : res.error || 'Ошибка вывода');
+      if (res.success) loadUser();
+    } catch (err) {
+      alert('Вывод временно недоступен');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!user) return React.createElement('div', { className: 'loading' }, 'Загрузка профиля...');
 
   return React.createElement('div', { className: 'profile' },
     React.createElement('div', { className: 'profile-header' },
       React.createElement(UserAvatar, { avatar: user.avatar, name: user.firstName || user.username, size: 'large' }),
       React.createElement('h1', null, user.firstName || 'Игрок')
     ),
+
     React.createElement('div', { className: 'balance-display' },
       React.createElement('h2', null, 'Баланс'),
       React.createElement('div', { className: 'balance-value' }, `${user.balance} ⭐`)
     ),
+
     React.createElement('div', { className: 'profile-actions' },
-      React.createElement('h2', null, 'Пополнить баланс'),
+      React.createElement('h2', null, 'Пополнить'),
       React.createElement('div', { className: 'action-buttons' },
         [10, 50, 100, 500].map(a => 
           React.createElement('button', {
             key: a,
             className: 'control-button primary',
-            onClick: () => handleTelegramPayment(a),
+            onClick: () => handlePayment(a),
             disabled: loading
           }, loading ? '...' : `${a} ⭐`)
         )
       )
+    ),
+
+    React.createElement('div', { className: 'profile-actions', style: { marginTop: '2rem' } },
+      React.createElement('h2', null, 'Вывод на TON Space'),
+      React.createElement('button', {
+        className: 'control-button success',
+        disabled: loading || user.balance < 10,
+        onClick: handleWithdraw,
+        style: { width: '100%', padding: '1rem', fontSize: '1.2rem' }
+      }, loading ? 'Вывод...' : `Вывести ${user.balance} ⭐ → TON Space`)
     )
   );
 };
+
 // Home Page Component
 const Home = () => {
     const navigateTo = (page) => {
@@ -713,263 +749,33 @@ const Game = () => {
     );
 };
 
-// В компоненте Profile заменяем функцию handleTelegramPayment
-const Profile = () => {
-    const [user, setUser] = useState(null);
-    const [stats, setStats] = useState({ gamesPlayed: 0, gamesWon: 0, totalWinnings: 0 });
-    const [loading, setLoading] = useState(false);
 
-    const loadUserData = async () => {
-        if (!window.Telegram?.WebApp?.initDataUnsafe?.user) return;
-        
-        const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
-        try {
-            const profile = await API.getUserProfile(tgUser.id);
-            if (profile.success) {
-                setUser(profile.user);
-                setStats({
-                    gamesPlayed: profile.user.gamesPlayed || 0,
-                    gamesWon: profile.user.gamesWon || 0,
-                    totalWinnings: profile.user.totalWinnings || 0
-                });
-            }
-        } catch (err) {
-            console.error('Failed to load profile:', err);
-        }
-    };
-
-    useEffect(() => {
-        loadUserData();
-        const interval = setInterval(loadUserData, 8000);
-        return () => clearInterval(interval);
-    }, []);
-
-    // НОВАЯ ФУНКЦИЯ ОПЛАТЫ — РАБОТАЕТ С createInvoiceLink
-    const handleTelegramPayment = async (amount) => {
-        if (!user || loading) return;
-        setLoading(true);
-
-        try {
-            // Шаг 1: Запрашиваем ссылку на оплату у бэкенда
-            const result = await API.createStarsInvoiceLink(user.telegramId, amount);
-
-            if (!result.success || !result.invoice_link) {
-                throw new Error('Не удалось создать ссылку на оплату');
-            }
-
-            // Шаг 2: Открываем оплату через Telegram (самый надёжный способ)
-            window.location.href = result.invoice_link;
-
-            // Альтернатива (если в будущем Telegram добавит openInvoice в WebApp):
-            // if (Telegram.WebApp.openInvoice) {
-            //   Telegram.WebApp.openInvoice(result.invoice_link);
-            // } else {
-            //   window.location.href = result.invoice_link;
-            // }
-
-            // После оплаты Telegram сам закроет окно и вернёт пользователя в Mini App
-            // Баланс обновится автоматически через polling или successful_payment в боте
-
-        } catch (error) {
-            console.error('Payment error:', error);
-            
-            // Если ошибка — пробуем демо-режим (только для теста!)
-            if (confirm('❌ Оплата не удалась. Использовать демо-режим?')) {
-                try {
-                    const demoResult = await API.demoPayment(user.telegramId, amount);
-                    if (demoResult.success) {
-                        alert(`✅ Демо: +${amount} ⭐`);
-                        loadUserData();
-                        window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                            detail: { balance: demoResult.newBalance }
-                        }));
-                    }
-                } catch (demoErr) {
-                    alert('❌ Даже демо не сработал :(');
-                }
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
-React.createElement('div', { className: 'profile-actions', style: { marginTop: '2rem' } },
-  React.createElement('h2', null, 'Вывод на TON Space'),
-  React.createElement('div', { className: 'balance-value', style: { marginBottom: '1rem' } }, 
-    `Доступно: ${user.balance} ⭐`
-  ),
-  React.createElement('button', {
-    className: 'control-button success',
-    disabled: user.balance < 10 || loading,
-    onClick: async () => {
-      if (!confirm(`Вывести ${user.balance} ⭐ на твой Telegram Wallet (TON Space)?`)) return;
-
-      setLoading(true);
-      const res = await API.request('/payment/withdraw-to-tonspace', {
-        method: 'POST',
-        body: JSON.stringify({ telegramId: user.telegramId, amount: user.balance })
-      });
-      setLoading(false);
-
-      alert(res.success ? res.message : res.error);
-      if (res.success) loadUserData();
-    }
-  }, loading ? 'Вывод...' : `Вывести ${user.balance} ⭐ → TON Space`)
-)
-    return React.createElement('div', { className: 'profile' },
-        React.createElement('div', { className: 'profile-header' },
-            React.createElement('h1', null, 'Профиль'),
-            user && React.createElement('p', { style: { marginTop: '0.5rem', opacity: 0.8, fontSize: '0.9rem' } }, 
-                `ID: ${user.telegramId}`
-            )
-        ),
-        
-        React.createElement('div', { className: 'stats-grid' },
-            React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Сыграно'),
-                React.createElement('div', { className: 'stat-value' }, stats.gamesPlayed)
-            ),
-            React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Победы'),
-                React.createElement('div', { className: 'stat-value' }, stats.gamesWon)
-            ),
-            React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Выиграно'),
-                React.createElement('div', { className: 'stat-value' }, `${stats.totalWinnings}⭐`)
-            ),
-            React.createElement('div', { className: 'stat-card' },
-                React.createElement('h3', null, 'Процент'),
-                React.createElement('div', { className: 'stat-value' },
-                    stats.gamesPlayed > 0 
-                        ? `${((stats.gamesWon / stats.gamesPlayed) * 100).toFixed(0)}%`
-                        : '0%'
-                )
-            )
-        ),
-        
-        user && React.createElement('div', { className: 'balance-display' },
-            React.createElement('h2', null, 'Баланс'),
-            React.createElement('div', { className: 'balance-value' }, `${user.balance} ⭐`)
-        ),
-
-        React.createElement('div', { className: 'profile-actions' },
-            React.createElement('h2', null, 'Пополнить баланс'),
-            React.createElement('div', { className: 'action-buttons' },
-                React.createElement('button', { 
-                    className: 'control-button primary',
-                    onClick: () => handleTelegramPayment(10),
-                    disabled: loading
-                }, loading ? '...' : '10 ⭐'),
-                React.createElement('button', { 
-                    className: 'control-button primary',
-                    onClick: () => handleTelegramPayment(50),
-                    disabled: loading
-                }, loading ? '...' : '50 ⭐'),
-                React.createElement('button', { 
-                    className: 'control-button primary',
-                    onClick: () => handleTelegramPayment(100),
-                    disabled: loading
-                }, loading ? '...' : '100 ⭐'),
-                React.createElement('button', { 
-                    className: 'control-button primary',
-                    onClick: () => handleTelegramPayment(500),
-                    disabled: loading
-                }, loading ? '...' : '500 ⭐')
-            ),
-            React.createElement('p', { style: { fontSize: '0.8rem', opacity: 0.7, marginTop: '1rem' } },
-                'Оплата через Telegram Stars — безопасно и мгновенно ⭐'
-            )
-        )
-    );
-};
-
-// Main App Component
+// App
 const App = () => {
-    const [currentPage, setCurrentPage] = useState('home');
-    const [isInitialized, setIsInitialized] = useState(false);
+  const [page, setPage] = useState('home');
 
-    useEffect(() => {
-        const handleHashChange = () => {
-            const hash = window.location.hash.replace('#', '') || 'home';
-            setCurrentPage(hash);
-        };
+  useEffect(() => {
+    const handler = () => setPage(window.location.hash.slice(1) || 'home');
+    window.addEventListener('hashchange', handler);
+    handler();
 
-        if (window.Telegram?.WebApp) {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand();
-            window.Telegram.WebApp.setHeaderColor('#2c2c2c');
-            window.Telegram.WebApp.setBackgroundColor('#667eea');
-        }
+    if (window.Telegram?.WebApp) {
+      Telegram.WebApp.ready();
+      Telegram.WebApp.expand();
+      Telegram.WebApp.setHeaderColor('#1a1a2e');
+      Telegram.WebApp.setBackgroundColor('#0f0f1a');
+    }
+  }, []);
 
-        window.addEventListener('hashchange', handleHashChange);
-        handleHashChange();
-        
-        setIsInitialized(true);
-
-        return () => window.removeEventListener('hashchange', handleHashChange);
-    }, []);
-
-    const renderPage = () => {
-        if (!isInitialized) {
-            return React.createElement('div', { className: 'loading' }, 'Загрузка...');
-        }
-
-        switch(currentPage) {
-            case 'game': 
-                return React.createElement(Game);
-            case 'profile': 
-                return React.createElement(Profile);
-            default: 
-                return React.createElement(Home);
-        }
-    };
-
-    return React.createElement('div', { className: 'App' },
-        React.createElement(Header),
-        React.createElement('main', null, renderPage())
-    );
+  return React.createElement('div', { className: 'App' },
+    React.createElement(Header),
+    React.createElement('main', null,
+      page === 'profile' ? React.createElement(Profile) :
+      page === 'game' ? React.createElement(Game) :
+      React.createElement(Home)
+    )
+  );
 };
 
-// Error Boundary
-class ErrorBoundary extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = { hasError: false };
-    }
-
-    static getDerivedStateFromError(error) {
-        return { hasError: true };
-    }
-
-    componentDidCatch(error, errorInfo) {
-        console.error('App Error:', error, errorInfo);
-    }
-
-    render() {
-        if (this.state.hasError) {
-            return React.createElement('div', { 
-                className: 'loading'
-            },
-                React.createElement('h1', null, '😵 Ошибка'),
-                React.createElement('p', null, 'Перезагрузите приложение'),
-                React.createElement('button', {
-                    onClick: () => window.location.reload(),
-                    className: 'control-button primary',
-                    style: { marginTop: '1rem' }
-                }, 'Обновить')
-            );
-        }
-
-        return this.props.children;
-    }
-}
-
-// Modern React 18 rendering
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-    React.createElement(ErrorBoundary, null,
-        React.createElement(App)
-    )
-);
-
-
-
+root.render(React.createElement(App));
