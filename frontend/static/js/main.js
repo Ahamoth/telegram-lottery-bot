@@ -4,7 +4,7 @@ const { useState, useEffect } = React;
 const API = {
   baseUrl: window.location.hostname === 'localhost' 
     ? 'http://localhost:3000' 
-    : 'https://telegram-lottery-bot-e75s.onrender.com',
+    : 'https://telegram-lottery-api-production.up.railway.app',
 
   async request(endpoint, options = {}) {
     try {
@@ -1322,6 +1322,7 @@ const App = () => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
+
 
 
 
