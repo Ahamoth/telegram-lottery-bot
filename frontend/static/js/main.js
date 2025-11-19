@@ -1,7 +1,7 @@
 // main.js
 const { useState, useEffect, useRef } = React;
 
-// API service (остается без изменений)
+// API service
 const API = {
   baseUrl: window.location.hostname === 'localhost' 
     ? 'http://localhost:3000' 
@@ -18,7 +18,15 @@ const API = {
       });
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Получаем детальную информацию об ошибке от сервера
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (e) {
+          // Если не удалось распарсить JSON, используем стандартное сообщение
+        }
+        throw new Error(errorMessage);
       }
       
       return await response.json();
@@ -96,7 +104,7 @@ const API = {
   }
 };
 
-// Компонент для отображения аватара (остается без изменений)
+// Компонент для отображения аватара
 const UserAvatar = ({ avatar, size = 'normal' }) => {
   const isDefault = avatar === 'default' || !avatar;
   const isImageUrl = typeof avatar === 'string' && avatar.startsWith('http');
@@ -172,28 +180,67 @@ const Header = ({ currentPage }) => {
                 const initData = window.Telegram.WebApp.initData;
                 const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
                 
+                console.log('Telegram User:', tgUser);
+                
                 const avatar = generateTelegramAvatar(tgUser);
                 setUserAvatar(avatar);
                 
-                const result = await API.authenticate(initData);
+                // Сохраняем базовую информацию о пользователе
+                const userData = {
+                    telegramId: tgUser?.id?.toString(),
+                    firstName: tgUser?.first_name || 'User',
+                    lastName: tgUser?.last_name || '',
+                    username: tgUser?.username || '',
+                    avatar: avatar,
+                    balance: 100, // Начальный баланс для демо
+                    gamesPlayed: 0,
+                    gamesWon: 0,
+                    totalWinnings: 0
+                };
                 
-                if (result.success) {
-                    const userWithAvatar = {
-                        ...result.user,
-                        avatar: avatar
-                    };
-                    setUser(userWithAvatar);
-                    setBalance(result.user.balance);
-                    localStorage.setItem('user', JSON.stringify(userWithAvatar));
-                    
-                    window.dispatchEvent(new CustomEvent('userAuthenticated', {
-                        detail: { user: userWithAvatar }
-                    }));
+                setUser(userData);
+                setBalance(userData.balance);
+                localStorage.setItem('user', JSON.stringify(userData));
+                
+                // Пытаемся аутентифицироваться на сервере
+                try {
+                    const result = await API.authenticate(initData);
+                    if (result.success) {
+                        const userWithAvatar = {
+                            ...result.user,
+                            avatar: avatar
+                        };
+                        setUser(userWithAvatar);
+                        setBalance(result.user.balance);
+                        localStorage.setItem('user', JSON.stringify(userWithAvatar));
+                    }
+                } catch (authError) {
+                    console.log('Auth failed, using local user:', authError.message);
                 }
+                
             } catch (error) {
-                console.error('Telegram auth failed:', error);
+                console.error('Telegram init failed:', error);
+                // Создаем демо пользователя если Telegram не доступен
+                createDemoUser();
             }
+        } else {
+            createDemoUser();
         }
+    };
+
+    const createDemoUser = () => {
+        const demoUser = {
+            telegramId: 'demo_' + Date.now(),
+            firstName: 'Demo User',
+            balance: 100,
+            gamesPlayed: 0,
+            gamesWon: 0,
+            totalWinnings: 0,
+            avatar: 'default'
+        };
+        setUser(demoUser);
+        setBalance(demoUser.balance);
+        localStorage.setItem('user', JSON.stringify(demoUser));
     };
 
     const generateTelegramAvatar = (tgUser) => {
@@ -294,7 +341,7 @@ const Home = () => {
     );
 };
 
-// Roulette Component (остается без изменений)
+// Roulette Component
 const Roulette = ({ onSpinComplete }) => {
     const [isSpinning, setIsSpinning] = useState(false);
     const [rotation, setRotation] = useState(0);
@@ -389,6 +436,7 @@ const Game = () => {
     const [currentUser, setCurrentUser] = useState(null);
     const [userNumber, setUserNumber] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         const savedUser = localStorage.getItem('user');
@@ -404,6 +452,7 @@ const Game = () => {
         setPlayers([]);
         setBankAmount(0);
         setUserNumber(null);
+        setError('');
     };
 
     const getUserAvatar = (user) => {
@@ -415,36 +464,43 @@ const Game = () => {
 
     const joinGame = async () => {
         if (players.length >= 10) {
-            alert('Лобби заполнено! Ожидайте следующую игру.');
+            setError('Лобби заполнено! Ожидайте следующую игру.');
             return;
         }
         
         if (players.find(p => p.telegramId === currentUser?.telegramId)) {
-            alert('Вы уже в лобби!');
+            setError('Вы уже в лобби!');
             return;
         }
         
         if (!currentUser) {
-            alert('Ошибка: пользователь не найден');
+            setError('Ошибка: пользователь не найден');
             return;
         }
         
         if (currentUser.balance < 10) {
-            alert('❌ Недостаточно звезд для входа в игру!\n\nНужно: 10 ⭐\nНа балансе: ' + currentUser.balance + ' ⭐\n\nПополните баланс в разделе Профиль.');
+            setError('❌ Недостаточно звезд для входа в игру!\n\nНужно: 10 ⭐\nНа балансе: ' + currentUser.balance + ' ⭐\n\nПополните баланс в разделе Профиль.');
             return;
         }
         
         setLoading(true);
+        setError('');
         
         try {
             const userAvatar = getUserAvatar(currentUser);
             const userName = currentUser.firstName || 'Игрок';
             
-            const result = await API.joinGame({
-                telegramId: currentUser.telegramId,
+            // Подготавливаем данные для отправки
+            const joinData = {
+                telegramId: currentUser.telegramId.toString(),
                 name: userName,
-                avatar: userAvatar
-            });
+                avatar: userAvatar,
+                balance: currentUser.balance
+            };
+
+            console.log('Sending join request:', joinData);
+
+            const result = await API.joinGame(joinData);
             
             if (result.success) {
                 const userPlayer = {
@@ -458,22 +514,31 @@ const Game = () => {
                 
                 const newPlayers = [...players, userPlayer];
                 setPlayers(newPlayers);
-                setBankAmount(result.bankAmount);
+                setBankAmount(result.bankAmount || newPlayers.length * 10);
                 setUserNumber(result.userNumber);
                 
-                const updatedUser = { ...currentUser, balance: result.newBalance };
+                // Обновляем баланс пользователя
+                const updatedUser = { 
+                    ...currentUser, 
+                    balance: result.newBalance || currentUser.balance - 10 
+                };
                 setCurrentUser(updatedUser);
                 localStorage.setItem('user', JSON.stringify(updatedUser));
                 
                 window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                    detail: { balance: result.newBalance }
+                    detail: { balance: updatedUser.balance }
                 }));
                 
-                alert(`✅ Вы присоединились! Ваш номер: ${result.userNumber}`);
+                setError('✅ Вы присоединились! Ваш номер: ' + result.userNumber);
+            } else {
+                setError('❌ Не удалось присоединиться к игре');
             }
         } catch (error) {
             console.error('Join game failed:', error);
-            alert('❌ Ошибка соединения с сервером');
+            const errorMessage = error.message.includes('400') 
+                ? '❌ Неверные данные для входа в игру. Проверьте данные пользователя.'
+                : '❌ Ошибка соединения с сервером';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -482,10 +547,13 @@ const Game = () => {
     const leaveGame = async () => {
         if (!currentUser) return;
         
+        setLoading(true);
+        setError('');
+        
         try {
-            const result = await API.leaveGame(currentUser.telegramId);
+            const result = await API.leaveGame(currentUser.telegramId.toString());
             if (result.success) {
-                const newBalance = result.newBalance;
+                const newBalance = result.newBalance || currentUser.balance + 10;
                 const updatedUser = { ...currentUser, balance: newBalance };
                 setCurrentUser(updatedUser);
                 localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -493,9 +561,14 @@ const Game = () => {
                 window.dispatchEvent(new CustomEvent('balanceUpdated', {
                     detail: { balance: newBalance }
                 }));
+                
+                setError('✅ Вы покинули лобби. Возвращено 10 ⭐');
             }
         } catch (error) {
             console.error('Leave game failed:', error);
+            setError('❌ Ошибка при выходе из лобби');
+        } finally {
+            setLoading(false);
         }
         
         const newPlayers = players.filter(p => p.telegramId !== currentUser.telegramId);
@@ -507,9 +580,12 @@ const Game = () => {
     const startGame = async () => {
         const realPlayersCount = players.filter(p => !p.isBot).length;
         if (realPlayersCount < 2) {
-            alert('❌ Нужно минимум 2 реальных игрока! Сейчас: ' + realPlayersCount);
+            setError('❌ Нужно минимум 2 реальных игрока! Сейчас: ' + realPlayersCount);
             return;
         }
+
+        setLoading(true);
+        setError('');
 
         try {
             const result = await API.startGame();
@@ -517,10 +593,15 @@ const Game = () => {
                 setGameState('active');
                 setWinners([]);
                 setWinningNumbers(null);
+                setError('');
+            } else {
+                setError('❌ Не удалось начать игру');
             }
         } catch (error) {
             console.error('Start game failed:', error);
-            alert('❌ Не удалось начать игру');
+            setError('❌ Ошибка при запуске игры');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -588,7 +669,7 @@ const Game = () => {
                 detail: { balance: newBalance }
             }));
             
-            alert(`🎉 Поздравляем! Вы выиграли ${userWinnings} ⭐`);
+            setError(`🎉 Поздравляем! Вы выиграли ${userWinnings} ⭐`);
         } else if (currentUser) {
             const updatedUser = {
                 ...currentUser,
@@ -596,6 +677,7 @@ const Game = () => {
             };
             setCurrentUser(updatedUser);
             localStorage.setItem('user', JSON.stringify(updatedUser));
+            setError('😔 В этот раз не повезло. Попробуйте снова!');
         }
     };
 
@@ -604,6 +686,7 @@ const Game = () => {
         setWinners([]);
         setWinningNumbers(null);
         setUserNumber(null);
+        setError('');
         initializeGame();
     };
 
@@ -611,6 +694,26 @@ const Game = () => {
     const realPlayersCount = players.filter(p => !p.isBot).length;
 
     return React.createElement('div', { className: 'game-page' },
+        error && React.createElement('div', { 
+            style: { 
+                background: error.includes('✅') || error.includes('🎉') 
+                    ? 'rgba(76, 175, 80, 0.2)' 
+                    : 'rgba(255, 107, 107, 0.2)',
+                border: error.includes('✅') || error.includes('🎉')
+                    ? '1px solid #4caf50'
+                    : '1px solid #ff6b6b',
+                color: error.includes('✅') || error.includes('🎉')
+                    ? '#4caf50'
+                    : '#ff6b6b',
+                padding: '0.8rem',
+                borderRadius: '12px',
+                marginBottom: '1rem',
+                fontSize: '0.9rem',
+                textAlign: 'center',
+                whiteSpace: 'pre-line'
+            } 
+        }, error),
+
         gameState === 'waiting' &&
             React.createElement('div', null,
                 React.createElement('div', { className: 'room-info' },
@@ -682,8 +785,9 @@ const Game = () => {
                     React.createElement('div', { className: 'game-controls' },
                         React.createElement('button', { 
                             className: 'control-button primary',
-                            onClick: startGame
-                        }, 'Начать игру')
+                            onClick: startGame,
+                            disabled: loading
+                        }, loading ? 'Запуск...' : 'Начать игру')
                     )
             ),
 
@@ -768,6 +872,7 @@ const Profile = () => {
         totalWinnings: 0
     });
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         loadUserData();
@@ -788,24 +893,34 @@ const Profile = () => {
 
     const handlePayment = async (amount) => {
         if (!user) {
-            alert('Пользователь не найден');
+            setError('Пользователь не найден');
             return;
         }
 
         setLoading(true);
+        setError('');
 
         try {
             const result = await API.demoPayment(user.telegramId, amount);
             if (result.success) {
-                alert(`✅ Баланс пополнен на ${amount} ⭐`);
-                loadUserData();
+                const updatedUser = {
+                    ...user,
+                    balance: result.newBalance || user.balance + amount
+                };
+                setUser(updatedUser);
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+                
                 window.dispatchEvent(new CustomEvent('balanceUpdated', {
-                    detail: { balance: result.newBalance }
+                    detail: { balance: updatedUser.balance }
                 }));
+                
+                setError(`✅ Баланс пополнен на ${amount} ⭐`);
+            } else {
+                setError('❌ Ошибка при пополнении баланса');
             }
         } catch (error) {
             console.error('Payment error:', error);
-            alert('❌ Ошибка при пополнении баланса');
+            setError('❌ Ошибка соединения с сервером');
         } finally {
             setLoading(false);
         }
@@ -814,6 +929,25 @@ const Profile = () => {
     const winRate = stats.gamesPlayed > 0 ? ((stats.gamesWon / stats.gamesPlayed) * 100).toFixed(1) : 0;
 
     return React.createElement('div', { className: 'profile' },
+        error && React.createElement('div', { 
+            style: { 
+                background: error.includes('✅') 
+                    ? 'rgba(76, 175, 80, 0.2)' 
+                    : 'rgba(255, 107, 107, 0.2)',
+                border: error.includes('✅')
+                    ? '1px solid #4caf50'
+                    : '1px solid #ff6b6b',
+                color: error.includes('✅')
+                    ? '#4caf50'
+                    : '#ff6b6b',
+                padding: '0.8rem',
+                borderRadius: '12px',
+                marginBottom: '1rem',
+                fontSize: '0.9rem',
+                textAlign: 'center'
+            } 
+        }, error),
+
         React.createElement('div', { className: 'profile-header' },
             React.createElement('h1', null, '👤 Профиль'),
             user && React.createElement('p', { className: 'text-secondary' }, 
