@@ -244,15 +244,32 @@ app.get('/', (req, res) => {
 });
 
 // Start bot
-if (process.env.NODE_ENV === 'production' && process.env.BOT_TOKEN) {
+/ Start bot
+console.log('🔧 Bot initialization...');
+console.log('BOT_TOKEN:', process.env.BOT_TOKEN ? 'Provided' : 'Missing');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
+if (process.env.BOT_TOKEN) {
   try {
-    const bot = require('./bot/bot');
-    console.log('🤖 Telegram bot started');
+    console.log('🚀 Starting Telegram bot from bot/bot.js...');
+    const bot = require('./bot/bot'); // ✅ ПРАВИЛЬНО - файл в папке bot
+    
+    // Проверка что бот загрузился
+    console.log('✅ Bot module loaded successfully');
+    
+    // Тестируем подключение бота
+    bot.telegram.getMe().then(botInfo => {
+      console.log(`✅ Bot @${botInfo.username} is running and responsive`);
+    }).catch(err => {
+      console.error('❌ Bot API connection failed:', err.message);
+    });
+    
   } catch (error) {
-    console.log('❌ Bot failed to start:', error.message);
+    console.error('❌ Failed to load bot module:', error.message);
+    console.error('Error stack:', error.stack);
   }
 } else {
-  console.log('❌ Bot token not provided');
+  console.log('❌ Bot token not provided, running in API-only mode');
 }
 
 // Error handling
@@ -294,3 +311,4 @@ const startServer = async () => {
 };
 
 startServer();
+
