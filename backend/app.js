@@ -13,7 +13,7 @@ const corsOptions = {
     'https://web.telegram.org',
     'http://localhost:3000',
     'http://localhost:3001',
-    'https://telegram-lottery-bot-e75s.onrender.com'
+    'https://telegram-lottery-api-production.up.railway.app'
   ],
   credentials: true,
   optionsSuccessStatus: 200
@@ -204,3 +204,4 @@ const startServer = async () => {
 };
 
 startServer();
+
