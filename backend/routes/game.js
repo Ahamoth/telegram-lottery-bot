@@ -265,77 +265,84 @@ module.exports = (pool) => {
   });
 
   // Start game - минимально 2 реальных игрока
-  router.post('/start', async (req, res) => {
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
+router.post('/start', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
 
-      const gameResult = await client.query(
-        `SELECT g.*, 
-         COUNT(CASE WHEN NOT gp.is_bot THEN 1 END) as real_players_count
-         FROM games g
-         LEFT JOIN game_players gp ON g.id = gp.game_id
-         WHERE g.status = 'waiting'
-         GROUP BY g.id
-         ORDER BY g.created_at DESC 
-         LIMIT 1 FOR UPDATE`
-      );
+    // Сначала находим игру без блокировки
+    const gameResult = await client.query(
+      `SELECT id, status, bank_amount 
+       FROM games 
+       WHERE status = 'waiting' 
+       ORDER BY created_at DESC 
+       LIMIT 1`
+    );
 
-      if (gameResult.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ 
-          success: false,
-          error: 'No waiting game found' 
-        });
-      }
-
-      const game = gameResult.rows[0];
-      const realPlayersCount = parseInt(game.real_players_count);
-
-      console.log(`🎮 Starting game ${game.id} with ${realPlayersCount} real players`);
-
-      // Только реальные игроки, минимум 2
-      if (realPlayersCount < 2) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          success: false,
-          error: 'Not enough real players to start the game',
-          details: `Need at least 2 real players, currently have ${realPlayersCount}`,
-          playersCount: realPlayersCount
-        });
-      }
-
-      // Обновляем статус игры
-      await client.query(
-        'UPDATE games SET status = $1, start_time = $2 WHERE id = $3',
-        ['active', new Date(), game.id]
-      );
-
-      await client.query('COMMIT');
-
-      res.json({
-        success: true,
-        game: {
-          id: game.id,
-          status: 'active',
-          bankAmount: game.bank_amount,
-          playersCount: realPlayersCount
-        },
-        message: `Game started successfully with ${realPlayersCount} real players`
-      });
-
-    } catch (error) {
+    if (gameResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      console.error('❌ Start game error:', error);
-      res.status(500).json({ 
+      return res.status(404).json({ 
         success: false,
-        error: 'Failed to start game'
+        error: 'No waiting game found' 
       });
-    } finally {
-      client.release();
     }
-  });
+
+    const game = gameResult.rows[0];
+
+    // Теперь считаем реальных игроков
+    const playersCountResult = await client.query(
+      `SELECT COUNT(*) as real_players_count 
+       FROM game_players 
+       WHERE game_id = $1 AND is_bot = false`,
+      [game.id]
+    );
+
+    const realPlayersCount = parseInt(playersCountResult.rows[0].real_players_count);
+
+    console.log(`🎮 Starting game ${game.id} with ${realPlayersCount} real players`);
+
+    // Только реальные игроки, минимум 2
+    if (realPlayersCount < 2) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Not enough real players to start the game',
+        details: `Need at least 2 real players, currently have ${realPlayersCount}`,
+        playersCount: realPlayersCount
+      });
+    }
+
+    // Обновляем статус игры
+    await client.query(
+      'UPDATE games SET status = $1, start_time = $2 WHERE id = $3',
+      ['active', new Date(), game.id]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      game: {
+        id: game.id,
+        status: 'active',
+        bankAmount: game.bank_amount,
+        playersCount: realPlayersCount
+      },
+      message: `Game started successfully with ${realPlayersCount} real players`
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Start game error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to start game: ' + error.message
+    });
+  } finally {
+    client.release();
+  }
+});
 
   // Finish game with winners
   router.post('/finish', async (req, res) => {
@@ -764,3 +771,4 @@ module.exports = (pool) => {
 
   return router;
 };
+
